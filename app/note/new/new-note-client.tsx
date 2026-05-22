@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Mic } from 'lucide-react'
 import MarkdownEditor from '@/components/MarkdownEditor'
@@ -16,10 +16,12 @@ const INITIAL_CONTENT: Record<string, string> = {
   link: '',
 }
 
-export default function NewNoteClient() {
+type NewNoteClientProps = {
+  mode: string
+}
+
+export default function NewNoteClient({ mode }: NewNoteClientProps) {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const mode = searchParams.get('mode') ?? 'text'
   const { setSavingState } = useUIStore()
 
   const [title, setTitle] = useState('')

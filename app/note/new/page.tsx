@@ -1,16 +1,13 @@
-import { Suspense } from 'react'
 import NewNoteClient from './new-note-client'
 
-function NewNoteFallback() {
-  return (
-    <main style={{ background: 'var(--bg-base)', minHeight: '100dvh' }} />
-  )
+type NewNotePageProps = {
+  searchParams?: {
+    mode?: string | string[]
+  }
 }
 
-export default function NewNotePage() {
-  return (
-    <Suspense fallback={<NewNoteFallback />}>
-      <NewNoteClient />
-    </Suspense>
-  )
+export default function NewNotePage({ searchParams }: NewNotePageProps) {
+  const mode = Array.isArray(searchParams?.mode) ? searchParams.mode[0] : searchParams?.mode
+
+  return <NewNoteClient mode={mode ?? 'text'} />
 }
