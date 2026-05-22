@@ -1,7 +1,7 @@
 {
-  "name": "Grafite Notas",
-  "short_name": "Grafite",
-  "description": "Anotações pessoais com identidade premium",
+  "name": "Notas",
+  "short_name": "Notas",
+  "description": "Suas notas pessoais",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",

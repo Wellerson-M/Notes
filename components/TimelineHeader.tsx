@@ -23,12 +23,12 @@ export default function TimelineHeader({ onSearchFocus, showSearch = true }: Pro
         style={{ height: 56, paddingTop: 'max(env(safe-area-inset-top, 0px), 0px)' }}
       >
         <span
-          className="font-sans font-semibold tracking-tight"
-          style={{ fontSize: 18, color: 'var(--text-primary)' }}
+          className="font-serif font-semibold tracking-tight"
+          style={{ fontSize: 20, color: 'var(--text-primary)' }}
         >
-          Grafi
+          no
           <span style={{ color: 'var(--accent-amber)' }}>t</span>
-          e
+          as
         </span>
 
         <div className="flex items-center gap-3">
