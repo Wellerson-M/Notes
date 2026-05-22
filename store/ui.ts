@@ -29,6 +29,12 @@ interface UIStore {
 
   audioRecording: boolean
   setAudioRecording: (recording: boolean) => void
+
+  particleEffects: boolean
+  setParticleEffects: (v: boolean) => void
+
+  reducedMotion: boolean
+  setReducedMotion: (v: boolean) => void
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -55,4 +61,10 @@ export const useUIStore = create<UIStore>((set) => ({
 
   audioRecording: false,
   setAudioRecording: (recording) => set({ audioRecording: recording }),
+
+  particleEffects: true,
+  setParticleEffects: (v) => set({ particleEffects: v }),
+
+  reducedMotion: false,
+  setReducedMotion: (v) => set({ reducedMotion: v }),
 }))
