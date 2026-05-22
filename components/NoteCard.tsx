@@ -14,19 +14,27 @@ export default function NoteCard({ note, showInkWave = false }: Props) {
   const router = useRouter()
   const [swipeX, setSwipeX] = useState(0)
   const [inkWave, setInkWave] = useState(showInkWave)
-  const isSwiping = useRef(false)
+  const didDrag = useRef(false)
+
+  const handleDragStart = () => {
+    didDrag.current = false
+  }
 
   const handleDragEnd = (_: unknown, info: PanInfo) => {
+    if (Math.abs(info.offset.x) > 8) {
+      didDrag.current = true
+    }
     if (info.offset.x < -60) {
       // Swipe left: archive/delete reveal
     } else if (info.offset.x > 60) {
       // Swipe right: pin/vault reveal
     }
     setSwipeX(0)
+    setTimeout(() => { didDrag.current = false }, 100)
   }
 
   const handleTap = () => {
-    if (Math.abs(swipeX) > 5) return
+    if (didDrag.current) return
     router.push(`/note/${note.id}`)
   }
 
@@ -106,7 +114,10 @@ export default function NoteCard({ note, showInkWave = false }: Props) {
       <motion.div
         drag="x"
         dragConstraints={{ left: -80, right: 80 }}
-        dragElastic={0.1}
+        dragElastic={0.15}
+        dragMomentum={false}
+        dragSnapToOrigin
+        onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onDrag={(_, info) => setSwipeX(info.offset.x)}
         onClick={handleTap}
@@ -121,7 +132,7 @@ export default function NoteCard({ note, showInkWave = false }: Props) {
           padding: 20,
           cursor: 'pointer',
           userSelect: 'none',
-          x: swipeX,
+          touchAction: 'pan-y',
         }}
       >
         {/* Top row: date + attribute icons */}

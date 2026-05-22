@@ -24,13 +24,13 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Grafite Notas',
-  description: 'Anotações pessoais com identidade premium',
+  title: 'Notas',
+  description: 'Suas notas pessoais',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Grafite',
+    title: 'Notas',
   },
   icons: {
     apple: '/icons/icon-192.png',

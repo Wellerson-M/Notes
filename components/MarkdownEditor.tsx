@@ -10,7 +10,7 @@ interface Props {
   placeholder?: string
 }
 
-function renderMarkdown(text: string): React.ReactNode[] {
+function renderMarkdown(text: string, onToggleTask?: (lineIndex: number) => void): React.ReactNode[] {
   return text.split('\n').map((line, i) => {
     // Heading
     const h1 = line.match(/^# (.+)/)
@@ -30,8 +30,13 @@ function renderMarkdown(text: string): React.ReactNode[] {
     // Task checkbox
     const taskDone = line.match(/^- \[x\] (.+)/i)
     if (taskDone) return (
-      <div key={i} className="flex items-center gap-2 my-1">
-        <div style={{ width: 14, height: 14, borderRadius: 3, background: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <div
+        key={i}
+        className="flex items-center gap-2 my-1"
+        style={{ cursor: 'pointer' }}
+        onClick={(e) => { e.stopPropagation(); onToggleTask?.(i) }}
+      >
+        <div style={{ width: 16, height: 16, borderRadius: 4, background: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" stroke="#111210" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </div>
         <span style={{ color: 'var(--text-muted)', textDecoration: 'line-through', fontSize: 15, fontFamily: 'var(--font-serif)' }}>{taskDone[1]}</span>
@@ -39,8 +44,13 @@ function renderMarkdown(text: string): React.ReactNode[] {
     )
     const taskOpen = line.match(/^- \[ \] (.+)/)
     if (taskOpen) return (
-      <div key={i} className="flex items-center gap-2 my-1">
-        <div style={{ width: 14, height: 14, borderRadius: 3, border: '1.5px solid var(--border-strong)', flexShrink: 0 }} />
+      <div
+        key={i}
+        className="flex items-center gap-2 my-1"
+        style={{ cursor: 'pointer' }}
+        onClick={(e) => { e.stopPropagation(); onToggleTask?.(i) }}
+      >
+        <div style={{ width: 16, height: 16, borderRadius: 4, border: '1.5px solid var(--border-strong)', flexShrink: 0 }} />
         <span style={{ color: 'var(--text-secondary)', fontSize: 15, fontFamily: 'var(--font-serif)' }}>{taskOpen[1]}</span>
       </div>
     )
@@ -86,6 +96,17 @@ export default function MarkdownEditor({ value, onChange, placeholder = 'Escreva
   const [wikilinkQuery, setWikilinkQuery] = useState('')
   const [wikilinkCursorPos, setWikilinkCursorPos] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const handleToggleTask = useCallback((lineIndex: number) => {
+    const lines = value.split('\n')
+    const line = lines[lineIndex]
+    if (line.match(/^- \[ \] /)) {
+      lines[lineIndex] = line.replace(/^- \[ \] /, '- [x] ')
+    } else if (line.match(/^- \[x\] /i)) {
+      lines[lineIndex] = line.replace(/^- \[x\] /i, '- [ ] ')
+    }
+    onChange(lines.join('\n'))
+  }, [value, onChange])
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Auto-continue list on Enter
@@ -239,7 +260,7 @@ export default function MarkdownEditor({ value, onChange, placeholder = 'Escreva
           style={{ minHeight: 300, cursor: 'text' }}
         >
           {value ? (
-            <div>{renderMarkdown(value)}</div>
+            <div>{renderMarkdown(value, handleToggleTask)}</div>
           ) : (
             <span
               className="font-serif italic"
