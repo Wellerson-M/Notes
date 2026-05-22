@@ -7,6 +7,7 @@ import MarkdownEditor from '@/components/MarkdownEditor'
 import BottomToolbar from '@/components/BottomToolbar'
 import SyncIndicator from '@/components/SyncIndicator'
 import AudioRecorder from '@/components/AudioRecorder'
+import SwipeBackWrapper from '@/components/SwipeBackWrapper'
 import { useUIStore } from '@/store/ui'
 
 const INITIAL_CONTENT: Record<string, string> = {
@@ -65,6 +66,7 @@ export default function NewNoteClient({ mode }: NewNoteClientProps) {
   const removeTag = (tag: string) => setTags(tags.filter((t) => t !== tag))
 
   return (
+    <SwipeBackWrapper onBack={handleBack}>
     <motion.main
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
@@ -210,5 +212,6 @@ export default function NewNoteClient({ mode }: NewNoteClientProps) {
         )}
       </AnimatePresence>
     </motion.main>
+    </SwipeBackWrapper>
   )
 }

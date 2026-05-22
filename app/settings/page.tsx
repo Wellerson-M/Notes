@@ -90,9 +90,9 @@ const SNAPSHOTS = [
 ]
 
 export default function SettingsPage() {
+  const { particleEffects, setParticleEffects, reducedMotion, setReducedMotion } = useUIStore()
   const [biometria, setBiometria] = useState(true)
   const [autoSummary, setAutoSummary] = useState(true)
-  const [reducedMotion, setReducedMotion] = useState(false)
   const [aiActions, setAIActions] = useState(['Resumir', 'Virar tarefas', 'Corrigir português'])
   const [toast, setToast] = useState<string | null>(null)
 
@@ -213,6 +213,9 @@ export default function SettingsPage() {
           </Row>
           <Row label="Reduzir movimento">
             <Toggle value={reducedMotion} onChange={setReducedMotion} />
+          </Row>
+          <Row label="Efeitos de partícula">
+            <Toggle value={particleEffects} onChange={setParticleEffects} />
           </Row>
         </Section>
 

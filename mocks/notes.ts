@@ -13,6 +13,7 @@ export type Note = {
     links?: { url: string; title: string; description: string; image: string }[]
   }
   tasks?: { text: string; done: boolean }[]
+  linkedNoteIds?: string[]
 }
 
 // Datas relativas a 2026-05-21
@@ -49,6 +50,7 @@ Alinhamento sobre o redesign do dashboard. Cliente pediu paleta mais sóbria e m
       { text: 'Revisar animações com time de front', done: false },
       { text: 'Enviar ata da reunião por e-mail', done: false },
     ],
+    linkedNoteIds: ['4', '17'],
   },
   {
     id: '2',
@@ -132,6 +134,7 @@ O capítulo 3 introduz o conceito de heurística da representatividade. Tendemos
     pinned: false,
     inVault: false,
     attachments: {},
+    linkedNoteIds: ['15', '18'],
   },
   {
     id: '5',
@@ -188,6 +191,7 @@ Pontos principais:
     tags: ['tecnologia', 'arquitetura'],
     pinned: false,
     inVault: false,
+    linkedNoteIds: ['13', '4'],
     attachments: {
       links: [
         {
@@ -332,6 +336,7 @@ Revisando o PR do Lucas. Pontos que preciso checar antes de aprovar:
     pinned: false,
     inVault: false,
     attachments: {},
+    linkedNoteIds: ['12'],
   },
   {
     id: '14',
@@ -375,6 +380,7 @@ A aula de hoje foi sobre como o olho humano percorre uma tela. Dois padrões pri
     pinned: false,
     inVault: false,
     attachments: {},
+    linkedNoteIds: ['1'],
   },
   {
     id: '16',
@@ -420,6 +426,7 @@ Um app de vocabulário que usa o contexto da sua própria vida. Em vez de flashc
     pinned: false,
     inVault: false,
     attachments: {},
+    linkedNoteIds: ['3'],
   },
   {
     id: '18',
@@ -435,6 +442,7 @@ Isso ressoa com o que vi nos últimos meses trabalhando mais de perto com o time
     pinned: false,
     inVault: false,
     attachments: {},
+    linkedNoteIds: ['11'],
   },
   {
     id: '19',
@@ -496,4 +504,22 @@ export function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60)
   const s = seconds % 60
   return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+/** Retorna todas as notas que linkam para a nota com o id dado */
+export function getBacklinks(noteId: string): Note[] {
+  return mockNotes.filter((n) => n.linkedNoteIds?.includes(noteId))
+}
+
+/** Retorna notas que mencionam o título sem wikilink formal */
+export function getUnlinkedMentions(noteId: string): Note[] {
+  const note = mockNotes.find((n) => n.id === noteId)
+  if (!note?.title) return []
+  const titleLower = note.title.toLowerCase()
+  return mockNotes.filter(
+    (n) =>
+      n.id !== noteId &&
+      !n.linkedNoteIds?.includes(noteId) &&
+      n.content.toLowerCase().includes(titleLower)
+  )
 }

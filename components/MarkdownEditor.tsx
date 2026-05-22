@@ -2,6 +2,7 @@
 import { useRef, useState, useCallback, KeyboardEvent } from 'react'
 import AmberCaret from './AmberCaret'
 import FloatingToolbar from './FloatingToolbar'
+import WikilinkAutocomplete from './WikilinkAutocomplete'
 
 interface Props {
   value: string
@@ -81,6 +82,9 @@ function inlineMarkdown(text: string): React.ReactNode {
 export default function MarkdownEditor({ value, onChange, placeholder = 'Escreva aqui...' }: Props) {
   const [isEditing, setIsEditing] = useState(false)
   const [toolbarVisible, setToolbarVisible] = useState(false)
+  const [wikilinkOpen, setWikilinkOpen] = useState(false)
+  const [wikilinkQuery, setWikilinkQuery] = useState('')
+  const [wikilinkCursorPos, setWikilinkCursorPos] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -117,6 +121,43 @@ export default function MarkdownEditor({ value, onChange, placeholder = 'Escreva
     }
   }, [value, onChange])
 
+  const handleEditorChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value
+    const cursorPos = e.target.selectionStart
+    onChange(val)
+
+    const textBefore = val.slice(0, cursorPos)
+    const match = textBefore.match(/\[\[([^\]]*)$/)
+    if (match) {
+      setWikilinkQuery(match[1])
+      setWikilinkCursorPos(cursorPos)
+      setWikilinkOpen(true)
+    } else if (wikilinkOpen) {
+      setWikilinkOpen(false)
+      setWikilinkQuery('')
+    }
+  }, [onChange, wikilinkOpen])
+
+  const handleWikilinkSelect = useCallback((title: string) => {
+    const textBefore = value.slice(0, wikilinkCursorPos)
+    const textAfter = value.slice(wikilinkCursorPos)
+    const openIdx = textBefore.lastIndexOf('[[')
+    if (openIdx !== -1) {
+      const newVal = value.slice(0, openIdx) + `[[${title}]]` + textAfter
+      onChange(newVal)
+      const newCursor = openIdx + title.length + 4
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.selectionStart = newCursor
+          textareaRef.current.selectionEnd = newCursor
+          textareaRef.current.focus()
+        }
+      }, 50)
+    }
+    setWikilinkOpen(false)
+    setWikilinkQuery('')
+  }, [value, wikilinkCursorPos, onChange])
+
   const handleSelect = () => {
     const textarea = textareaRef.current
     if (!textarea) return
@@ -126,6 +167,12 @@ export default function MarkdownEditor({ value, onChange, placeholder = 'Escreva
 
   return (
     <div style={{ position: 'relative' }}>
+      <WikilinkAutocomplete
+        open={wikilinkOpen}
+        query={wikilinkQuery}
+        onSelect={handleWikilinkSelect}
+        onClose={() => { setWikilinkOpen(false); setWikilinkQuery('') }}
+      />
       {isEditing ? (
         <AmberCaret>
           <div style={{ position: 'relative' }}>
@@ -159,7 +206,7 @@ export default function MarkdownEditor({ value, onChange, placeholder = 'Escreva
             <textarea
               ref={textareaRef}
               value={value}
-              onChange={(e) => onChange(e.target.value)}
+              onChange={handleEditorChange}
               onKeyDown={handleKeyDown}
               onSelect={handleSelect}
               onBlur={() => {
