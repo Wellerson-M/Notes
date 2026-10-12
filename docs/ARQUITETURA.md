@@ -174,6 +174,10 @@ Por isso a rota da nota é `/note?id=` (página estática) e não `/note/[id]`: 
 - **Antes de recarregar**, dispara o evento `grafite:flush` para o editor gravar o que estiver pendente.
 - **Service worker:** é registrado como `/sw.js?v=<versão>`, então cada deploy instala um novo e apaga os caches antigos.
 
+## Temas (`lib/theme.ts`)
+
+Sete temas, cada um é um bloco `:root[data-theme="<id>"]` em `globals.css` que redefine os tokens (`--bg-*`, `--text-*`, `--accent-amber`, `--on-accent`...). Transparências usam as versões RGB (`rgba(var(--accent-rgb), 0.3)`, `--gold-rgb`, `--bg-rgb`), então **nunca escreva cor fixa num componente**. A escolha fica no `localStorage` do aparelho e é aplicada por um script no `<head>` antes da primeira pintura, junto com a `theme-color` da barra do sistema. O canvas das partículas lê `--accent-rgb` com `getComputedStyle`.
+
 ## Layout celular × PC
 
 Mobile-first, com base de 380px. A partir de 760px de largura, `globals.css` limita `main` a 680px centralizados. Elementos fixos com a classe `.app-bar` (barras e folhas) e `.app-fab` (botões flutuantes) acompanham a coluna. **Todo elemento `position: fixed` novo precisa de uma dessas classes.** No PC, `Esc` fecha as folhas.

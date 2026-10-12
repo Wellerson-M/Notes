@@ -5,6 +5,7 @@ import { extractTasks } from '@/lib/notes'
 import { scheduleSync, startAutoSync, syncNow } from '@/lib/sync'
 import { startUpdateWatcher } from '@/lib/updates'
 import { startAutoLock } from '@/lib/vault'
+import { applyTheme, getTheme } from '@/lib/theme'
 
 const WELCOME_DATE = '2026-01-01T12:00:00.000Z'
 
@@ -24,6 +25,7 @@ const WELCOME = `Este app guarda tudo **no seu aparelho** primeiro, então funci
 /** Efeitos globais do app — montado uma vez no layout */
 export default function AppBoot() {
   useEffect(() => {
+    applyTheme(getTheme()) // garante a cor da barra do sistema (theme-color) no tema salvo
     const stopSync = startAutoSync()
     const stopUpdates = startUpdateWatcher()
     const stopAutoLock = startAutoLock()

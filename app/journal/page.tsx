@@ -117,7 +117,7 @@ export default function JournalPage() {
         <button
           onClick={runReview}
           className="touch-feedback flex items-center justify-center gap-2 w-full rounded-xl py-3 font-sans"
-          style={{ background: 'var(--accent-amber-soft)', border: '1px solid rgba(232,165,71,0.3)', color: 'var(--accent-amber)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
+          style={{ background: 'var(--accent-amber-soft)', border: '1px solid var(--accent-border)', color: 'var(--accent-amber)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
         >
           <Sparkles size={15} /> Resumo da semana
         </button>
@@ -219,7 +219,7 @@ export default function JournalPage() {
                   <button
                     onClick={saveReview}
                     className="touch-feedback flex-1 rounded-xl py-3 font-sans"
-                    style={{ fontSize: 14, fontWeight: 600, cursor: 'pointer', background: 'var(--accent-amber)', color: '#111210', border: 'none' }}
+                    style={{ fontSize: 14, fontWeight: 600, cursor: 'pointer', background: 'var(--accent-amber)', color: 'var(--on-accent)', border: 'none' }}
                   >
                     Salvar como nota
                   </button>

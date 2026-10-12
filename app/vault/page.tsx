@@ -35,7 +35,7 @@ function PrimaryButton({ children, onClick, disabled, type = 'button' }: {
       whileTap={{ scale: 0.96 }}
       className="flex items-center justify-center gap-2 w-full font-sans"
       style={{
-        background: 'var(--accent-amber)', color: '#111210', border: 'none', borderRadius: 14,
+        background: 'var(--accent-amber)', color: 'var(--on-accent)', border: 'none', borderRadius: 14,
         padding: '13px 20px', fontSize: 15, fontWeight: 600,
         cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.6 : 1,
       }}
@@ -48,7 +48,7 @@ function PrimaryButton({ children, onClick, disabled, type = 'button' }: {
 function LockBadge() {
   return (
     <motion.div
-      animate={{ boxShadow: ['0 0 20px rgba(212,175,55,0.1)', '0 0 40px rgba(212,175,55,0.25)', '0 0 20px rgba(212,175,55,0.1)'] }}
+      animate={{ boxShadow: ['0 0 20px rgba(var(--gold-rgb), 0.1)', '0 0 40px rgba(var(--gold-rgb), 0.25)', '0 0 20px rgba(var(--gold-rgb), 0.1)'] }}
       transition={{ duration: 2, repeat: Infinity }}
       style={{
         width: 80, height: 80, borderRadius: '50%', background: 'var(--bg-elevated)',
@@ -237,7 +237,7 @@ export default function VaultPage() {
               <Link
                 href={`${newNoteHref('text')}&vault=1`}
                 className="touch-feedback flex items-center justify-center gap-2 rounded-xl py-3 font-sans"
-                style={{ background: 'var(--accent-amber-soft)', border: '1px solid rgba(232,165,71,0.3)', color: 'var(--accent-amber)', fontSize: 14, fontWeight: 500 }}
+                style={{ background: 'var(--accent-amber-soft)', border: '1px solid var(--accent-border)', color: 'var(--accent-amber)', fontSize: 14, fontWeight: 500 }}
               >
                 <Plus size={16} /> Nova nota no Vault
               </Link>

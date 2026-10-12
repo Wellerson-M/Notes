@@ -22,7 +22,7 @@ roda só no servidor em `/api/ai`.
 - Dentro de `db.transaction` do Dexie, não espere promessas de fora (Web Crypto, fetch): a transação fecha sozinha.
 - Elemento `position: fixed` novo precisa da classe `.app-bar` ou `.app-fab` (coluna central no PC).
 - Página nova: adicionar em `PAGES` de `public/sw.js` para abrir offline.
-- Cores só via variáveis CSS de `app/globals.css`; animações ≤ 400ms; respeitar "Reduzir movimento" (ver `docs/DESIGN.md`).
+- Cores só via variáveis CSS de `app/globals.css` (há 7 temas; transparência = `rgba(var(--accent-rgb), x)`, texto sobre destaque = `var(--on-accent)`); animações ≤ 400ms; respeitar "Reduzir movimento" (ver `docs/DESIGN.md`).
 - Textos da interface em português do Brasil, com acentos.
 
 ## Comandos

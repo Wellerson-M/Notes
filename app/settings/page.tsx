@@ -9,11 +9,12 @@ import { useUIStore } from '@/store/ui'
 import { db, getMeta } from '@/lib/db'
 import { syncNow } from '@/lib/sync'
 import { useNotes } from '@/lib/repo'
-import { getPreview, getRelativeDate } from '@/lib/notes'
+import { getPreview } from '@/lib/notes'
 import { clearRecentSearches } from '@/lib/recent-searches'
 import type { Note } from '@/lib/types'
 import { APP_VERSION, APP_BUILT_AT, applyUpdate, checkForUpdate } from '@/lib/updates'
 import { makeZip } from '@/lib/zip'
+import ThemePicker from '@/components/ThemePicker'
 import { useRouter } from 'next/navigation'
 
 function Section({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
@@ -93,6 +94,19 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
 
 type ServerStatus = { authenticated: boolean; configured: boolean; ai: boolean }
 
+/** "hoje às 14:32", "ontem às 09:10", "10/10 às 18:05" */
+function whenText(t: number | string | undefined): string {
+  if (!t) return '—'
+  const d = new Date(t)
+  const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  const day = new Date(d); day.setHours(0, 0, 0, 0)
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const diff = Math.round((today.getTime() - day.getTime()) / 86400000)
+  if (diff === 0) return `hoje às ${time}`
+  if (diff === 1) return `ontem às ${time}`
+  return `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${time}`
+}
+
 const SYNC_LABELS: Record<string, string> = {
   ok: 'sincronizado',
   syncing: 'sincronizando...',
@@ -111,13 +125,14 @@ function download(name: string, content: string | Blob, type: string) {
 
 export default function SettingsPage() {
   const router = useRouter()
-  const { particleEffects, setParticleEffects, reducedMotion, setReducedMotion, syncStatus, showToast, vaultLocked } = useUIStore()
+  const { particleEffects, setParticleEffects, reducedMotion, setReducedMotion, syncStatus, syncError, showToast, vaultLocked } = useUIStore()
   const notes = useNotes()
   const [server, setServer] = useState<ServerStatus | null>(null)
   const [serverError, setServerError] = useState(false)
   const [password, setPassword] = useState('')
   const [loggingIn, setLoggingIn] = useState(false)
   const [lastSync, setLastSync] = useState<number | undefined>()
+  const [live, setLive] = useState<{ version?: string; builtAt?: string } | null>(null)
   const importRef = useRef<HTMLInputElement>(null)
 
   const refreshStatus = async () => {
@@ -129,6 +144,8 @@ export default function SettingsPage() {
       setServerError(true)
     }
     setLastSync(await getMeta<number>('lastSyncAt'))
+    // Versão que está no ar, para comparar com a deste aparelho
+    fetch('/api/version', { cache: 'no-store' }).then((r) => r.json()).then(setLive).catch(() => setLive(null))
   }
 
   useEffect(() => {
@@ -166,7 +183,7 @@ export default function SettingsPage() {
       r === 'ok' ? 'Tudo sincronizado' :
       r === 'offline' ? 'Sem internet agora' :
       r === 'unauthorized' ? 'Entre com a senha primeiro' :
-      'Não deu para sincronizar'
+      (useUIStore.getState().syncError ?? 'Não deu para sincronizar')
     )
   }
 
@@ -275,9 +292,15 @@ export default function SettingsPage() {
                   <SyncIndicator />
                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                     {SYNC_LABELS[syncStatus]}
-                    {syncStatus === 'ok' && lastSync ? ` · ${getRelativeDate(new Date(lastSync).toISOString())}` : ''}
+                    {syncStatus === 'ok' && lastSync ? ` · ${whenText(lastSync)}` : ''}
                   </span>
                 </div>
+                {syncStatus === 'error' && syncError && (
+                  <span style={{ fontSize: 12, color: 'var(--danger)', lineHeight: '17px' }}>{syncError}</span>
+                )}
+                {syncStatus !== 'ok' && lastSync && (
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>último sync com sucesso: {whenText(lastSync)}</span>
+                )}
               </div>
               {connected && (
                 <button
@@ -287,7 +310,7 @@ export default function SettingsPage() {
                   style={{
                     background: 'var(--accent-amber-soft)',
                     color: 'var(--accent-amber)',
-                    border: '1px solid rgba(232,165,71,0.2)',
+                    border: '1px solid rgba(var(--accent-rgb), 0.2)',
                     fontSize: 12,
                     cursor: 'pointer',
                   }}
@@ -335,7 +358,7 @@ export default function SettingsPage() {
                 disabled={loggingIn || !password}
                 className="touch-feedback rounded-xl px-4 font-sans"
                 style={{
-                  background: 'var(--accent-amber)', color: '#111210', fontSize: 14, fontWeight: 600,
+                  background: 'var(--accent-amber)', color: 'var(--on-accent)', fontSize: 14, fontWeight: 600,
                   border: 'none', cursor: 'pointer', opacity: loggingIn || !password ? 0.6 : 1,
                 }}
               >
@@ -349,7 +372,7 @@ export default function SettingsPage() {
 
         {/* 2. Aparência */}
         <Section title="Aparência" icon={Palette}>
-          <Row label="Tema" value="Grafite Dark" />
+          <ThemePicker />
           <Row label="Reduzir movimento">
             <Toggle value={reducedMotion} onChange={setReducedMotion} />
           </Row>
@@ -391,12 +414,18 @@ export default function SettingsPage() {
             hidden
             onChange={(e) => { const f = e.target.files?.[0]; if (f) void importFile(f); e.target.value = '' }}
           />
+          <Row label="Neste aparelho" value={`${APP_VERSION} · ${whenText(APP_BUILT_AT)}`} />
           <Row
-            label="Versão"
-            value={APP_BUILT_AT
-              ? `${APP_VERSION} · ${new Date(APP_BUILT_AT).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}`
-              : APP_VERSION}
+            label="No ar"
+            value={!live?.version ? '...' : `${live.version} · ${whenText(live.builtAt)}`}
           />
+          {live?.version && live.version !== APP_VERSION ? (
+            <Row label="Há uma versão nova — atualizar" onClick={checkUpdate} />
+          ) : (
+            <p className="px-5 py-3 font-sans" style={{ fontSize: 12, color: live?.version ? 'var(--success)' : 'var(--text-muted)' }}>
+              {live?.version ? '✓ você está na versão mais nova' : 'conferindo a versão no ar...'}
+            </p>
+          )}
           <Row label="Procurar atualização" onClick={checkUpdate} />
         </Section>
       </div>

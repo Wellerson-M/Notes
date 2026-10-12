@@ -11,6 +11,9 @@ interface UIStore {
 
   syncStatus: SyncStatus
   setSyncStatus: (status: SyncStatus) => void
+  /** Motivo do último erro de sync, vindo do servidor (ex.: URI do banco mal formatada) */
+  syncError: string | null
+  setSyncError: (msg: string | null) => void
 
   vaultLocked: boolean
   setVaultLocked: (locked: boolean) => void
@@ -49,6 +52,9 @@ export const useUIStore = create<UIStore>((set) => ({
 
   syncStatus: 'ok',
   setSyncStatus: (status) => set({ syncStatus: status }),
+
+  syncError: null,
+  setSyncError: (msg) => set({ syncError: msg }),
 
   vaultLocked: true,
   setVaultLocked: (locked) => set({ vaultLocked: locked }),

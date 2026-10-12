@@ -267,7 +267,7 @@ export default function SearchPage() {
             <button
               onClick={askAI}
               className="touch-feedback flex items-center gap-2 rounded-xl px-5 py-3 font-sans"
-              style={{ background: 'var(--accent-amber)', color: '#111210', fontSize: 14, fontWeight: 600, border: 'none', cursor: 'pointer' }}
+              style={{ background: 'var(--accent-amber)', color: 'var(--on-accent)', fontSize: 14, fontWeight: 600, border: 'none', cursor: 'pointer' }}
             >
               <Sparkles size={16} />
               {query.trim() ? 'Perguntar' : 'Abrir o assistente'}

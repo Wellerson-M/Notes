@@ -180,10 +180,10 @@ export default function AudioRecorder({ onClose, onSave, stopLabel = 'Parar e in
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          boxShadow: '0 4px 20px rgba(212, 175, 55, 0.3)',
+          boxShadow: '0 4px 20px rgba(var(--gold-rgb), 0.3)',
         }}
       >
-        <Square size={24} fill="#111210" color="#111210" />
+        <Square size={24} fill="currentColor" style={{ color: 'var(--on-accent)' }} />
       </motion.button>
 
       <span style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12, fontWeight: 500 }}>

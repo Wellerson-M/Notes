@@ -48,7 +48,7 @@ export default function RadialMenu({ open, onClose, anchorX, anchorY }: Props) {
               position: 'fixed',
               inset: 0,
               zIndex: 55,
-              background: 'rgba(17,18,16,0.4)',
+              background: 'rgba(var(--bg-rgb), 0.4)',
             }}
           />
 

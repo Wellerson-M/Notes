@@ -61,13 +61,10 @@ Cadastrar `MONGODB_URI`, `APP_PASSWORD` e `GEMINI_API_KEY` na Vercel e fazer o d
 Fazer o "Roteiro manual" de [TESTES.md](TESTES.md) no aparelho real (voz, instalação, gestos, biometria, câmera, compartilhar).
 **Pronto quando:** os 12 passos funcionarem; anotar aqui o que falhar.
 
-### 3. Ícone novo
-Gerar o logo (há um prompt pronto na conversa de 12/10) e trocar `public/icons/icon-192.svg` e `icon-512.svg`. Vale exportar também PNGs 192/512, porque alguns Androids ignoram SVG no manifest.
-
-### 4. Lembretes (opcional)
+### 3. Lembretes (opcional)
 Data em tarefas (`- [ ] ligar @amanhã 9h`) e notificação. Sem servidor de push, só funciona com o app aberto ou via Notification Triggers (pouco suporte). Com push: Web Push + VAPID + um cron na Vercel.
 
-### 5. Merge de conflito (opcional)
+### 4. Merge de conflito (opcional)
 Hoje, quando dois aparelhos editam a mesma nota offline, a versão mais nova vence e a outra vai para o histórico. Dá para juntar automaticamente com um diff de linhas (ex.: `diff-match-patch`).
 
 ### Pequenas pendências
@@ -89,6 +86,7 @@ Hoje, quando dois aparelhos editam a mesma nota offline, a versão mais nova ven
 
 - **21/05/2026** — Fase 1: frontend visual completo com dados mockados (7 telas, 22 componentes, os 5 efeitos visuais, PWA instalável). Nada persistia.
 - **04/10/2026** — Retomada: campo de partículas ligado, splash screen, estados vazios unificados. Primeiro ROADMAP.
+- **12/10/2026 (5)** — Ícone novo (G com ponta de lápis) em PNG: normal, maskable para o Android, apple-touch-icon (antes apontava para um arquivo que não existia) e favicon. 7 temas (Grafite, Meia-noite, Floresta, Vinho, Lavanda, Papel e Neblina, os dois últimos claros), escolhidos em Ajustes e aplicados antes da primeira pintura. Mapa de conexões refeito (estava descentralizado e com linhas desalinhadas). Sync: aspas/espaços em volta da `MONGODB_URI` são ignorados e o erro do banco agora vem com o motivo. Ajustes mostra data e hora do último sync e compara a versão do aparelho com a que está no ar.
 - **12/10/2026 (4)** — Voz: corrigida a repetição de frases no Android (modo contínuo do Chrome); no assistente, envia sozinho 1,2s depois de você parar de falar. IA mais rápida: o Flash-Lite (~1,5s) virou o modelo principal, e o Flash (que "pensa", 5–30s, cota diária pequena) virou reserva. Teste `npm run e2e:voz`.
 - **12/10/2026 (3)** — Deslizar dos cards refeito: segue o dedo 1:1 (antes travava em 80px e a transição CSS do `touch-feedback` brigava com o arraste), fundo e ícone acompanham o dedo, vibração ao passar do ponto, peteleco, o card sai da tela ao apagar e um arraste nunca abre a nota sem querer. A IA pede a senha ali mesmo quando o aparelho não está conectado. Teste `npm run e2e:gestos`.
 - **12/10/2026 (2)** — Vault cifrado de verdade (senha, biometria, auto-trancar; IA bloqueada), histórico de versões (inclusive em conflito — e correção no sync, que limpava a marca de "sujo" antes de comparar com o servidor), foto → texto, busca por sentido, resumo da semana, compartilhar para o app e atalhos, backup completo e exportação em Markdown, reserva automática quando o Gemini sobrecarrega, lint sem erros e e2e com IA real (76/76).

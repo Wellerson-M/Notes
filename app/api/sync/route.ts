@@ -1,5 +1,5 @@
 import { isAuthenticated, unauthorized } from '@/lib/auth'
-import { notesCollection, type NoteDoc } from '@/lib/mongo'
+import { describeDbError, notesCollection, type NoteDoc } from '@/lib/mongo'
 import type { Note } from '@/lib/types'
 
 type SyncBody = { since?: number; notes?: Note[] }
@@ -12,6 +12,15 @@ const MAX_NOTES_PER_PUSH = 500
  */
 export async function POST(request: Request) {
   if (!(await isAuthenticated())) return unauthorized()
+  try {
+    return await sync(request)
+  } catch (err) {
+    console.error('[api/sync]', err)
+    return Response.json({ error: describeDbError(err) }, { status: 500 })
+  }
+}
+
+async function sync(request: Request) {
 
   const body = (await request.json().catch(() => null)) as SyncBody | null
   if (!body || !Array.isArray(body.notes ?? [])) {

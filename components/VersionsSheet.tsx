@@ -47,7 +47,7 @@ export default function VersionsSheet({ noteId, onRestore, onClose }: {
             <button
               onClick={() => onRestore(selected)}
               className="touch-feedback flex-1 rounded-xl py-3 font-sans"
-              style={{ fontSize: 14, fontWeight: 600, cursor: 'pointer', background: 'var(--accent-amber)', color: '#111210', border: 'none' }}
+              style={{ fontSize: 14, fontWeight: 600, cursor: 'pointer', background: 'var(--accent-amber)', color: 'var(--on-accent)', border: 'none' }}
             >
               Restaurar
             </button>

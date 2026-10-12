@@ -38,7 +38,7 @@ export default function HeatmapCalendar({ notes, year, month, selectedDay, onSel
   const getCellColor = (intensity: number) => {
     if (intensity === 0) return 'var(--bg-elevated)'
     const alpha = 0.2 + intensity * 0.7
-    return `rgba(232, 165, 71, ${alpha})`
+    return `rgba(var(--accent-rgb), ${alpha})`
   }
 
   const weekDays = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']

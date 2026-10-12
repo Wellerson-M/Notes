@@ -20,7 +20,7 @@ export default function WikiLink({ title }: { title: string }) {
       href={noteHref(target.id)}
       // O corpo do editor entra em modo edição ao clicar; o link não deve disparar isso
       onClick={(e) => e.stopPropagation()}
-      style={{ color: 'var(--accent-amber)', textDecoration: 'underline', textDecorationColor: 'rgba(232,165,71,0.4)', textUnderlineOffset: 3 }}
+      style={{ color: 'var(--accent-amber)', textDecoration: 'underline', textDecorationColor: 'rgba(var(--accent-rgb), 0.4)', textUnderlineOffset: 3 }}
     >
       {title}
     </Link>

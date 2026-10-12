@@ -42,6 +42,10 @@ export default function ParticleField({ mode, className = '', style }: Props) {
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+    // Canvas não entende var(): lê as cores do tema atual uma vez
+    const css = getComputedStyle(document.documentElement)
+    const accentRgb = css.getPropertyValue('--accent-rgb').trim() || '232, 165, 71'
+    const mutedRgb = css.getPropertyValue('--border-strong').trim() || '#4a4b43'
 
     const resize = () => {
       canvas.width = canvas.offsetWidth
@@ -157,11 +161,13 @@ export default function ParticleField({ mode, className = '', style }: Props) {
         ctx.beginPath()
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
         if (p.amber) {
-          ctx.fillStyle = `rgba(232,165,71,${p.alpha})`
+          ctx.fillStyle = `rgba(${accentRgb}, ${p.alpha})`
         } else {
-          ctx.fillStyle = `rgba(74,75,67,${p.alpha})`
+          ctx.globalAlpha = p.alpha
+          ctx.fillStyle = mutedRgb
         }
         ctx.fill()
+        ctx.globalAlpha = 1
       })
 
       rafRef.current = requestAnimationFrame(draw)
