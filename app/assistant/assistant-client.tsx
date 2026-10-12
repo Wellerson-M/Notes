@@ -6,7 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Mic, ArrowUp, Sparkles, FilePlus, FileText, ExternalLink, Check } from 'lucide-react'
 import type { AssistantAction, ChatTurn } from '@/lib/ai-types'
 import type { Note } from '@/lib/types'
-import { ai, AIError } from '@/lib/ai'
+import { ai, AIError, AI_LOGIN_MESSAGE } from '@/lib/ai'
+import ConnectInline from '@/components/ConnectInline'
 import { notesRepo, useNotes } from '@/lib/repo'
 import { useUIStore } from '@/store/ui'
 import { renderMarkdown } from '@/components/MarkdownEditor'
@@ -175,7 +176,7 @@ export default function AssistantClient({ initialQuery }: { initialQuery: string
               ) : (
                 <div className="flex flex-col gap-3">
                   <div className="font-serif" style={{ fontSize: 15, lineHeight: '24px', color: m.error ? 'var(--danger)' : 'var(--text-secondary)' }}>
-                    {m.error ? m.text : renderMarkdown(m.text)}
+                    {m.error && m.text === AI_LOGIN_MESSAGE ? <ConnectInline /> : m.error ? m.text : renderMarkdown(m.text)}
                   </div>
 
                   {/* Notas citadas */}

@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, X, Tag, Sparkles } from 'lucide-react'
+import { Search, X, Tag, Sparkles, Compass } from 'lucide-react'
 import Link from 'next/link'
 import type { Note } from '@/lib/types'
 import { getPreview } from '@/lib/notes'
@@ -9,8 +9,18 @@ import { useNotes } from '@/lib/repo'
 import { loadRecentSearches, saveRecentSearch } from '@/lib/recent-searches'
 import EmptyState from '@/components/EmptyState'
 import { noteHref } from '@/lib/routes'
+import { AIError, AI_LOGIN_MESSAGE } from '@/lib/ai'
+import ConnectInline from '@/components/ConnectInline'
+import { ensureEmbeddings, semanticSearch } from '@/lib/semantic'
 
-type Tab = 'texto' | 'ia' | 'tags' | 'datas'
+type Tab = 'texto' | 'sentido' | 'ia' | 'tags' | 'datas'
+
+type Semantic =
+  | { status: 'idle' }
+  | { status: 'indexing'; done: number; total: number }
+  | { status: 'searching' }
+  | { status: 'done'; results: { note: Note; score: number }[] }
+  | { status: 'error'; message: string }
 
 function highlightText(text: string, query: string): React.ReactNode {
   if (!query) return text
@@ -78,6 +88,29 @@ export default function SearchPage() {
   const results = useMemo(() => searchNotes(notes, query), [notes, query])
   const tags = useMemo(() => getAllTags(notes), [notes])
 
+  // Busca por sentido: indexa o que falta (só na primeira vez é demorado) e compara vetores
+  const [semantic, setSemantic] = useState<Semantic>({ status: 'idle' })
+  const notesRef = useRef(notes)
+  useEffect(() => { notesRef.current = notes }, [notes])
+  useEffect(() => {
+    if (activeTab !== 'sentido' || query.trim().length < 3) return
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      try {
+        await ensureEmbeddings(notesRef.current, (done, total) => {
+          if (!cancelled && total > 0 && done < total) setSemantic({ status: 'indexing', done, total })
+        })
+        if (cancelled) return
+        setSemantic({ status: 'searching' })
+        const results = await semanticSearch(query.trim(), notesRef.current)
+        if (!cancelled) setSemantic({ status: 'done', results })
+      } catch (e) {
+        if (!cancelled) setSemantic({ status: 'error', message: e instanceof AIError ? e.message : 'A busca por sentido falhou agora.' })
+      }
+    }, 700)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [activeTab, query])
+
   const dateResults = useMemo(() => {
     if (!from && !to) return []
     const start = from ? new Date(from + 'T00:00:00').getTime() : -Infinity
@@ -89,6 +122,7 @@ export default function SearchPage() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'texto', label: 'Texto' },
+    { id: 'sentido', label: 'Por sentido' },
     { id: 'ia', label: 'Perguntar à IA' },
     { id: 'tags', label: 'Tags' },
     { id: 'datas', label: 'Datas' },
@@ -149,7 +183,7 @@ export default function SearchPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && activeTab === 'ia') askAI() }}
-              placeholder={activeTab === 'ia' ? 'pergunte qualquer coisa...' : 'o que você está procurando?'}
+              placeholder={activeTab === 'ia' ? 'pergunte qualquer coisa...' : activeTab === 'sentido' ? 'descreva a ideia, sem precisar da palavra exata' : 'o que você está procurando?'}
               className="flex-1 amber-caret font-serif italic"
               style={{
                 background: 'transparent',
@@ -198,7 +232,33 @@ export default function SearchPage() {
 
       {/* Content */}
       <div className="px-4 py-4">
-        {activeTab === 'ia' ? (
+        {activeTab === 'sentido' ? (
+          query.trim().length < 3 ? (
+            <p className="font-serif italic pt-4" style={{ fontSize: 16, color: 'var(--text-secondary)', lineHeight: '24px' }}>
+              Encontre notas pelo assunto, mesmo sem a palavra exata — &ldquo;aquela ideia de viagem&rdquo;, &ldquo;coisas sobre saúde&rdquo;.
+              Na primeira vez, as notas são indexadas pela IA (o Vault fica de fora).
+            </p>
+          ) : semantic.status === 'indexing' ? (
+            <p className="font-sans pt-4" style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+              indexando suas notas... {semantic.done}/{semantic.total}
+            </p>
+          ) : semantic.status === 'searching' || semantic.status === 'idle' ? (
+            <p className="font-sans pt-4" style={{ fontSize: 13, color: 'var(--text-muted)' }}>procurando...</p>
+          ) : semantic.status === 'error' && semantic.message === AI_LOGIN_MESSAGE ? (
+            <div className="pt-4"><ConnectInline /></div>
+          ) : semantic.status === 'error' ? (
+            <p className="font-sans pt-4" style={{ fontSize: 14, color: 'var(--danger)' }}>{semantic.message}</p>
+          ) : semantic.results.length === 0 ? (
+            <EmptyState icon={<Compass size={32} style={{ color: 'var(--text-disabled)' }} />} message="nada parecido por aqui..." paddingTop={60} />
+          ) : (
+            <div className="flex flex-col gap-3">
+              <p className="font-sans" style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                {semantic.results.length} nota{semantic.results.length > 1 ? 's' : ''} sobre isso
+              </p>
+              {semantic.results.map((r) => renderResult(r.note))}
+            </div>
+          )
+        ) : activeTab === 'ia' ? (
           <div className="flex flex-col items-start gap-4 pt-4">
             <p className="font-serif italic" style={{ fontSize: 16, color: 'var(--text-secondary)', lineHeight: '24px' }}>
               Pergunte do seu jeito — &ldquo;o que ficou decidido na reunião?&rdquo;, &ldquo;quais livros eu quero ler?&rdquo;.

@@ -4,6 +4,8 @@ import { Sparkles, Link2, Plus, Check } from 'lucide-react'
 import BottomSheet from './BottomSheet'
 import { renderMarkdown } from './MarkdownEditor'
 import type { Suggestions } from '@/lib/ai-types'
+import { AI_LOGIN_MESSAGE } from '@/lib/ai'
+import ConnectInline from './ConnectInline'
 import type { Note } from '@/lib/types'
 
 const LOADING_LABELS: Record<string, string> = {
@@ -14,6 +16,8 @@ const LOADING_LABELS: Record<string, string> = {
   fix: 'revisando o texto...',
   topics: 'organizando em tópicos...',
   suggest: 'lendo suas notas...',
+  ocr: 'lendo a imagem...',
+  review: 'relendo a semana...',
 }
 
 export function AIThinking({ action }: { action: string }) {
@@ -33,6 +37,9 @@ export function AIThinking({ action }: { action: string }) {
 }
 
 export function AIError({ message }: { message: string }) {
+  if (message === AI_LOGIN_MESSAGE) {
+    return <div className="px-5 py-5"><ConnectInline /></div>
+  }
   return (
     <p className="font-sans px-5 py-6" style={{ fontSize: 14, color: 'var(--danger)', lineHeight: '20px' }}>
       {message}
@@ -69,7 +76,7 @@ export function AIResultSheet({
   onClose: () => void
 }) {
   // Tarefas e resumos são acréscimos naturais; o resto costuma substituir
-  const appendFirst = state.action === 'tasks' || state.action === 'summarize'
+  const appendFirst = state.action === 'tasks' || state.action === 'summarize' || state.action === 'ocr'
   return (
     <BottomSheet title="IA" onClose={onClose}>
       {state.loading ? (

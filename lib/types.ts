@@ -16,6 +16,12 @@ export type Note = {
   linkedNoteIds?: string[]
   /** Exclusão lógica — necessária para o sync propagar deleções entre aparelhos */
   deleted?: boolean
+  /**
+   * Notas do Vault guardam título, conteúdo e tags cifrados aqui (AES-GCM, ver lib/vault.ts);
+   * os campos em claro ficam vazios. Numa nota lida com o Vault trancado, `cipher` continua
+   * presente — é assim que a interface sabe que ela está trancada.
+   */
+  cipher?: string
 }
 
 /** Registro local: a nota mais o controle de sync (nunca vai para o servidor) */

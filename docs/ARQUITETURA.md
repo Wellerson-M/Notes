@@ -36,7 +36,8 @@ app/
   globals.css            design tokens + coluna central no PC
 
 components/
-  NoteEditor.tsx         editor único (nota nova e existente): salvamento, menu, IA
+  NoteEditor.tsx         editor único (nota nova e existente): salvamento, menu, IA, foto, versões
+  VersionsSheet.tsx      versões anteriores da nota (prévia e restaurar)
   AISheets.tsx           folhas de resultado da IA e de sugestões
   AppBoot.tsx            efeitos globais: auto-sync, atualização, nota de boas-vindas
   MarkdownEditor.tsx     editor/preview markdown, tarefas clicáveis, [[wikilinks]]
@@ -47,9 +48,14 @@ components/
 lib/
   types.ts               tipo Note (o contrato de dados do app inteiro)
   notes.ts               helpers puros: datas, prévia, tarefas, wikilinks, backlinks
-  db.ts                  Dexie: tabelas notes e meta
-  repo.ts                notesRepo (CRUD) + hooks useNotes/useNote
+  db.ts                  Dexie: tabelas notes, meta, history, embeddings e secrets
+  repo.ts                notesRepo (CRUD, cifra/decifra o Vault, histórico) + hooks useNotes/useNote
   sync.ts                sincronização com /api/sync
+  vault.ts               criptografia do Vault (PBKDF2 + AES-GCM), biometria (WebAuthn), auto-trancar
+  history.ts             versões anteriores das notas
+  semantic.ts            busca por sentido (embeddings no IndexedDB)
+  image.ts               reduz fotos antes do OCR
+  zip.ts                 .zip mínimo para exportar em markdown
   ai.ts / ai-types.ts    cliente da IA e contrato com /api/ai
   auth.ts / mongo.ts     só servidor (import 'server-only')
   routes.ts              noteHref(id), newNoteHref(mode)
@@ -74,9 +80,12 @@ scripts/e2e.cjs          teste ponta a ponta
 | `tags`, `pinned`, `inVault` | |
 | `tasks`, `linkedNoteIds` | **derivados** do conteúdo a cada gravação (`- [ ]` e `[[Título]]`) |
 | `deleted` | exclusão lógica, necessária para o sync levar a deleção aos outros aparelhos |
+| `cipher` | só em notas do Vault: título, conteúdo e tags cifrados. Os campos em claro ficam vazios |
 | `attachments` | estrutura herdada do protótipo; fotos e áudio ainda não existem de verdade |
 
 No aparelho, cada nota tem também `dirty: 0 | 1`. No Atlas, o documento usa `_id` = id da nota e um `syncedAt` (horário do servidor, usado como cursor).
+
+Outras tabelas locais (nunca sincronizadas): `history` (versões anteriores), `embeddings` (vetores da busca por sentido) e `secrets` (chave do Vault liberada pela biometria).
 
 **Regra:** telas nunca falam com o Dexie direto. Use `notesRepo` e `useNotes`/`useNote` de `lib/repo.ts`. As duas exceções conscientes são `WikiLink.tsx` (consulta pontual por título) e `AppBoot.tsx` (nota de boas-vindas com id fixo).
 
@@ -90,7 +99,26 @@ No aparelho, cada nota tem também `dirty: 0 | 1`. No Atlas, o documento usa `_i
 
 **Quando sincroniza:** ao abrir, 2s depois de editar, ao voltar a internet, ao voltar para o app, a cada 5 minutos, no pull-to-refresh e pelo botão em Ajustes.
 
-**Limitação conhecida:** o conflito é resolvido por nota inteira. Se a mesma nota for editada offline em dois aparelhos, a edição mais antiga se perde (ver ROADMAP).
+**Conflito:** é resolvido por nota inteira. Se a mesma nota for editada offline em dois aparelhos, vence a mais nova, e a perdedora vai para o **histórico** do aparelho dela (motivo "conflito entre aparelhos"). Por isso o sync aplica o que veio do servidor **antes** de limpar as marcas de sujo: é a marca que identifica a edição local que perdeu.
+
+## Histórico de versões (`lib/history.ts`)
+
+Só no aparelho, até 50 versões por nota. Uma versão é guardada ao editar (se a última tiver mais de 10 minutos), quando o sync sobrescreve a nota local e antes de restaurar uma versão. Versões de notas do Vault ficam cifradas. Quando uma nota entra no Vault, as versões antigas em claro são cifradas também.
+
+## Vault (`lib/vault.ts`)
+
+- **Senha do Vault** (diferente da `APP_PASSWORD`) → PBKDF2-SHA256, 310 mil iterações, sal aleatório → chave AES-GCM 256 **não extraível**, que vive só na memória.
+- O `notesRepo` cifra `{title, content, tags}` em `cipher` (`gv1.<sal>.<iv>.<dados>`, base64url) antes de gravar. Tarefas, wikilinks e vetores de busca de notas do Vault não são guardados.
+- O sal vai dentro de cada `cipher`: outro aparelho deriva a mesma chave com a mesma senha. Se dois aparelhos criarem o Vault com sais diferentes, a mesma senha abre os dois.
+- **Trancado:** as notas vêm com `cipher` e sem texto (`isLocked(n)`). Fixar e apagar funcionam; editar lança `VaultLockedError`.
+- **Tranca** ao recarregar a página, no botão "Trancar" e depois de 1 minuto com o app em segundo plano.
+- **Biometria (opcional, por aparelho):** WebAuthn com autenticador da plataforma. A chave é guardada como CryptoKey não extraível na tabela `secrets` e só é usada depois de o sistema confirmar a digital, o rosto ou o PIN.
+- **IA:** notas do Vault nunca são enviadas (`buildDigests` filtra e o editor bloqueia as ações).
+- **Sem recuperação:** esquecer a senha = perder as notas do Vault. O backup `.json` leva as notas cifradas.
+
+## Busca por sentido (`lib/semantic.ts`)
+
+Cada nota fora do Vault vira um vetor de 256 dimensões (`gemini-embedding-001`), guardado em `embeddings` com o `updatedAt` da nota. Na busca, só as notas novas ou editadas são reindexadas, em lotes de 50. A pergunta vira um vetor e é comparada com todos no aparelho (produto escalar). O corte fica com o que passa de 0,72 **e** está a até 0,025 da melhor nota, porque os escores desse modelo ficam espremidos entre 0,65 e 0,80.
 
 **Status** (`store/ui.ts → syncStatus`): `ok`, `syncing`, `error`, `offline` e `unauthorized`. Aparece no ponto ao lado do ✨ e em Ajustes.
 
@@ -109,14 +137,23 @@ A chave do Gemini fica só no servidor. O modelo padrão é `gemini-flash-latest
 | `transform` | resumir, tarefas, expandir, traduzir, corrigir, tópicos | `{ text }`, que o usuário escolhe se substitui ou acrescenta |
 | `suggest` | botão "Sugestões" no editor | `{ title, tags, related[], ideas[] }` (JSON com schema) |
 | `assistant` | tela do assistente | `{ reply, noteIds[], actions[] }`, com ações `create_note`, `append_to_note` e `open_note` |
+| `ocr` | botão "foto" no editor (imagem reduzida a 1600px/JPEG no aparelho) | `{ text }` em markdown |
+| `embed` | busca por sentido | `{ vectors[][] }` normalizados |
+| `review` | "Resumo da semana" no diário | `{ text }` em markdown |
 
 **Contexto enviado:** `buildDigests` escolhe até 40 notas (palavras em comum com o pedido, mais recência e fixadas), com prévia de 400 caracteres cada. **Notas do Vault nunca entram.** Ações propostas pela IA só são aplicadas quando o usuário toca no botão, e ids inventados pela IA são descartados na interface.
 
-**Erros:** `503` quando falta a chave, `429` quando o limite gratuito acaba e `502` nos demais casos. Todos viram mensagens em português na interface.
+**Sobrecarga:** se o modelo principal responder 500/503 ("high demand") ou 429 (cota do modelo; no plano grátis cada modelo tem a sua), ou passar de 20s, a rota tenta uma vez o `GEMINI_FALLBACK_MODEL` (padrão `gemini-flash-lite-latest`).
+
+**Erros:** `503` quando falta a chave ou o Google está sobrecarregado, `429` quando o limite gratuito acaba e `502` nos demais casos. Todos viram mensagens em português na interface.
 
 ## Voz (`hooks/useSpeech.ts`)
 
 Usa `SpeechRecognition`/`webkitSpeechRecognition` em `pt-BR`, contínuo e com resultados parciais. O navegador encerra a escuta em silêncios longos, e o hook reinicia sozinho enquanto o usuário não para. Funciona no Chrome (Android e desktop), no Edge e no Safari (iOS 14.5+). No Firefox não existe: aparece uma mensagem pedindo o Chrome. Exige HTTPS (ou localhost) e permissão de microfone.
+
+## Compartilhar para o app
+
+O `manifest.json` declara `share_target` (GET em `/note` com `title`, `text` e `url`). No Android, o app instalado aparece no menu "compartilhar". A nota nasce já salva, com o link no fim. O iPhone não oferece share target para PWAs. O manifest também tem atalhos (segurar o ícone): nova nota, ditar e assistente.
 
 ## Offline (`public/sw.js`)
 

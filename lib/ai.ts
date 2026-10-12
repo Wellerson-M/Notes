@@ -5,6 +5,9 @@ import { getPreview } from './notes'
 
 export class AIError extends Error {}
 
+/** Mensagem do 401: as telas trocam por um campo de senha ali mesmo (ConnectInline) */
+export const AI_LOGIN_MESSAGE = 'Entre com sua senha para usar a IA.'
+
 async function call<T>(body: AIRequest): Promise<T> {
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     throw new AIError('A IA precisa de internet.')
@@ -15,7 +18,7 @@ async function call<T>(body: AIRequest): Promise<T> {
     body: JSON.stringify(body),
   })
   const data = await res.json().catch(() => ({}))
-  if (res.status === 401) throw new AIError('Entre com sua senha em Ajustes para usar a IA.')
+  if (res.status === 401) throw new AIError(AI_LOGIN_MESSAGE)
   if (!res.ok) throw new AIError(data.error ?? 'A IA não conseguiu responder agora.')
   return data as T
 }
@@ -69,4 +72,24 @@ export const ai = {
       notes: buildDigests(all, message),
       today: new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
     }),
+
+  /** Foto (já comprimida no aparelho) → texto em markdown */
+  ocr: (image: { base64: string; mimeType: string }) =>
+    call<{ text: string }>({ kind: 'ocr', image: image.base64, mimeType: image.mimeType }).then((r) => r.text),
+
+  embed: (texts: string[], task: 'document' | 'query') =>
+    call<{ vectors: number[][] }>({ kind: 'embed', texts, task }).then((r) => r.vectors),
+
+  /** Retrospectiva das notas criadas ou editadas no período (o Vault fica de fora) */
+  review: (all: Note[], from: Date, to: Date, period: string) => {
+    const inPeriod = all.filter((n) => {
+      const t = Math.max(new Date(n.createdAt).getTime(), new Date(n.updatedAt).getTime())
+      return t >= from.getTime() && t <= to.getTime()
+    })
+    return call<{ text: string }>({
+      kind: 'review',
+      period,
+      notes: buildDigests(inPeriod, '', 60).map((d) => ({ ...d, text: getPreview(inPeriod.find((n) => n.id === d.id)?.content ?? '', 700) })),
+    }).then((r) => ({ text: r.text, count: inPeriod.filter((n) => !n.inVault).length }))
+  },
 }

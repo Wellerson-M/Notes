@@ -1,8 +1,8 @@
 'use client'
 import { useState, useRef } from 'react'
-import { motion, PanInfo } from 'framer-motion'
+import { animate, motion, useMotionValue, useMotionValueEvent, useTransform, type PanInfo } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { Pin, Lock, Mic, Image as ImageIcon, CheckSquare, Link2 } from 'lucide-react'
+import { Pin, Lock, Mic, Image as ImageIcon, CheckSquare, Link2, Trash2 } from 'lucide-react'
 import type { Note } from '@/lib/types'
 import { getRelativeDate, formatDuration } from '@/lib/notes'
 import { notesRepo, removeWithUndo } from '@/lib/repo'
@@ -12,33 +12,77 @@ import { noteHref } from '@/lib/routes'
 interface Props {
   note: Note
   showInkWave?: boolean
+  /** Mostra o texto de uma nota do Vault (só dentro do Vault aberto) */
+  revealed?: boolean
 }
 
-export default function NoteCard({ note, showInkWave = false }: Props) {
-  const router = useRouter()
-  const [swipeX, setSwipeX] = useState(0)
-  const [inkWave, setInkWave] = useState(showInkWave)
-  const didDrag = useRef(false)
+/** Fração da largura do card que confirma a ação ao soltar */
+const TRIGGER = 0.35
+/**
+ * Um "peteleco" também confirma, mesmo curto: pelo menos FLICK_MIN px em até FLICK_MS, ainda
+ * indo na mesma direção ao soltar. Medido com o relógio do gesto — a velocidade do framer
+ * depende do relógio de quadros e deixava arraste lento passar como peteleco.
+ */
+const FLICK_MIN = 56
+const FLICK_MS = 300
+const SPRING = { type: 'spring', stiffness: 500, damping: 40 } as const
 
-  const handleDragStart = () => {
-    didDrag.current = false
-  }
+const vibrate = () => { try { navigator.vibrate?.(12) } catch { /* sem vibração */ } }
+
+export default function NoteCard({ note, showInkWave = false, revealed = false }: Props) {
+  const router = useRouter()
+  const [inkWave] = useState(showInkWave)
+  const cardRef = useRef<HTMLDivElement>(null)
+  const armed = useRef<'left' | 'right' | null>(null)
+  const busy = useRef(false)
+  const dragStartedAt = useRef(0)
+  /** O onTap do framer dispara mesmo depois de um arraste: esta marca impede abrir a nota sem querer */
+  const dragged = useRef(false)
+
+  // O card segue o dedo 1:1 por motion value: nada re-renderiza durante o arraste
+  const x = useMotionValue(0)
+  const width = () => cardRef.current?.offsetWidth ?? 340
+
+  // Fundo e ícone acompanham o dedo e ganham força quando a ação está "armada"
+  const deleteOpacity = useTransform(x, [-120, -16, 0], [1, 0, 0])
+  const pinOpacity = useTransform(x, [0, 16, 120], [0, 0, 1])
+  const deleteScale = useTransform(x, [-140, -40], [1.15, 0.7])
+  const pinScale = useTransform(x, [40, 140], [0.7, 1.15])
+
+  // Vibra uma vez ao cruzar o ponto de confirmação (para os dois lados)
+  useMotionValueEvent(x, 'change', (v) => {
+    const limit = width() * TRIGGER
+    const next = v <= -limit ? 'left' : v >= limit ? 'right' : null
+    if (next && next !== armed.current) vibrate()
+    armed.current = next
+  })
 
   const handleDragEnd = (_: unknown, info: PanInfo) => {
-    if (Math.abs(info.offset.x) > 8) {
-      didDrag.current = true
+    setTimeout(() => { dragged.current = false }, 80)
+    const w = width()
+    const { offset, velocity } = info
+    const quick = performance.now() - dragStartedAt.current <= FLICK_MS
+    const flickLeft = quick && offset.x <= -FLICK_MIN && velocity.x < 0
+    const flickRight = quick && offset.x >= FLICK_MIN && velocity.x > 0
+
+    if (offset.x <= -w * TRIGGER || flickLeft) {
+      // Apagar: o card sai da tela pela esquerda e só então some da lista
+      busy.current = true
+      if (!armed.current) vibrate()
+      void animate(x, -w - 40, { type: 'tween', duration: 0.18, ease: [0.32, 0.72, 0, 1] }).then(() =>
+        removeWithUndo(note, useUIStore.getState().showToast),
+      )
+      return
     }
-    if (info.offset.x < -60) {
-      void removeWithUndo(note, useUIStore.getState().showToast)
-    } else if (info.offset.x > 60) {
+    if (offset.x >= w * TRIGGER || flickRight) {
+      if (!armed.current) vibrate()
       void notesRepo.update(note.id, { pinned: !note.pinned })
     }
-    setSwipeX(0)
-    setTimeout(() => { didDrag.current = false }, 100)
+    void animate(x, 0, SPRING)
   }
 
   const handleTap = () => {
-    if (didDrag.current) return
+    if (busy.current || dragged.current) return
     router.push(noteHref(note.id))
   }
 
@@ -60,74 +104,51 @@ export default function NoteCard({ note, showInkWave = false }: Props) {
   const totalTasks = note.tasks?.length ?? 0
 
   return (
-    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 16 }}>
-      {/* Swipe action backgrounds */}
-      <div
+    <div ref={cardRef} style={{ position: 'relative', overflow: 'hidden', borderRadius: 16 }}>
+      {/* Fundo do deslize para a esquerda (apagar) */}
+      <motion.div
+        aria-hidden
         style={{
-          position: 'absolute',
-          inset: 0,
-          display: 'flex',
-          alignItems: 'center',
-          borderRadius: 16,
+          position: 'absolute', inset: 0, borderRadius: 16, background: 'var(--danger)',
+          display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, paddingRight: 24,
+          opacity: deleteOpacity,
         }}
       >
-        {/* Right side (swipe left → destructive) */}
-        <div
-          style={{
-            position: 'absolute',
-            right: 0,
-            top: 0,
-            bottom: 0,
-            width: 80,
-            display: 'flex',
-            gap: 8,
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            paddingRight: 16,
-            borderRadius: '0 16px 16px 0',
-            background: swipeX < -20 ? 'var(--danger)' : 'transparent',
-            transition: 'background 0.2s',
-          }}
-        >
-          <span style={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>Deletar</span>
-        </div>
+        <motion.div style={{ scale: deleteScale, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Trash2 size={18} color="#fff" />
+          <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>Apagar</span>
+        </motion.div>
+      </motion.div>
 
-        {/* Left side (swipe right → constructive) */}
-        <div
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: 80,
-            display: 'flex',
-            gap: 8,
-            alignItems: 'center',
-            justifyContent: 'flex-start',
-            paddingLeft: 16,
-            borderRadius: '16px 0 0 16px',
-            background: swipeX > 20 ? 'var(--accent-gold)' : 'transparent',
-            transition: 'background 0.2s',
-          }}
-        >
-          <Pin size={16} color="#111210" />
-          <span style={{ color: '#111210', fontSize: 12, fontWeight: 600 }}>{note.pinned ? 'Soltar' : 'Fixar'}</span>
-        </div>
-      </div>
+      {/* Fundo do deslize para a direita (fixar) */}
+      <motion.div
+        aria-hidden
+        style={{
+          position: 'absolute', inset: 0, borderRadius: 16, background: 'var(--accent-gold)',
+          display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 8, paddingLeft: 24,
+          opacity: pinOpacity,
+        }}
+      >
+        <motion.div style={{ scale: pinScale, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Pin size={18} color="#111210" />
+          <span style={{ color: '#111210', fontSize: 13, fontWeight: 600 }}>{note.pinned ? 'Soltar' : 'Fixar'}</span>
+        </motion.div>
+      </motion.div>
 
-      {/* Card */}
+      {/* Card — sem a classe touch-feedback: a transição CSS de transform dela brigava com o arraste */}
       <motion.div
         drag="x"
-        dragConstraints={{ left: -80, right: 80 }}
-        dragElastic={0.15}
+        dragDirectionLock
         dragMomentum={false}
-        dragSnapToOrigin
-        onDragStart={handleDragStart}
+        dragElastic={0}
+        onDragStart={() => { armed.current = null; dragged.current = true; dragStartedAt.current = performance.now() }}
         onDragEnd={handleDragEnd}
-        onDrag={(_, info) => setSwipeX(info.offset.x)}
-        onClick={handleTap}
-        className={`noise-card touch-feedback ${inkWave ? 'ink-wave' : ''}`}
+        onTap={handleTap}
+        whileTap={{ scale: 0.985 }}
+        className={`noise-card ${inkWave ? 'ink-wave' : ''}`}
         style={{
+          x,
+          position: 'relative',
           background: note.inVault ? 'var(--bg-elevated)' : 'var(--bg-surface)',
           border: note.inVault
             ? '1px solid var(--accent-gold)'
@@ -169,7 +190,7 @@ export default function NoteCard({ note, showInkWave = false }: Props) {
         )}
 
         {/* Preview text */}
-        {note.inVault ? (
+        {note.inVault && !revealed ? (
           <div
             style={{
               height: 16,

@@ -4,6 +4,7 @@ import { db, getMeta, setMeta } from '@/lib/db'
 import { extractTasks } from '@/lib/notes'
 import { scheduleSync, startAutoSync, syncNow } from '@/lib/sync'
 import { startUpdateWatcher } from '@/lib/updates'
+import { startAutoLock } from '@/lib/vault'
 
 const WELCOME_DATE = '2026-01-01T12:00:00.000Z'
 
@@ -25,6 +26,7 @@ export default function AppBoot() {
   useEffect(() => {
     const stopSync = startAutoSync()
     const stopUpdates = startUpdateWatcher()
+    const stopAutoLock = startAutoLock()
 
     // Nota de boas-vindas num aparelho vazio. Id fixo + data antiga: entre aparelhos ela vira
     // uma nota só, e qualquer edição ou exclusão sua sempre vence esta cópia no sync.
@@ -50,7 +52,7 @@ export default function AppBoot() {
       await setMeta('welcomed', 1)
     })()
 
-    return () => { stopSync(); stopUpdates() }
+    return () => { stopSync(); stopUpdates(); stopAutoLock() }
   }, [])
 
   return null
