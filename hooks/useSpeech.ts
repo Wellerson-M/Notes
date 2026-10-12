@@ -33,17 +33,55 @@ const ERRORS: Record<string, string> = {
   'audio-capture': 'Nenhum microfone encontrado.',
 }
 
+/** Silêncio depois da fala que encerra a escuta quando `endOnSilence` está ligado */
+const SILENCE_MS = 1200
+
+const words = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w\s]/g, '').split(/\s+/).filter(Boolean)
+
 /**
- * Ditado em português. O navegador corta a escuta em silêncios longos;
- * enquanto `listening` for true, reiniciamos automaticamente.
+ * Junta dois trechos sem repetir a parte em comum. O Chrome do Android reenvia a frase inteira
+ * a cada resultado ("oi" → "oi tudo" → "oi tudo bem"), e às vezes repete o fim do trecho anterior.
  */
-export function useSpeech() {
+export function joinSpeech(a: string, b: string): string {
+  const A = a.trim()
+  const B = b.trim()
+  if (!A) return B
+  if (!B) return A
+  const wa = words(A)
+  const wb = words(B)
+  if (wb.length >= wa.length && wa.every((w, i) => wb[i] === w)) return B // b estende a
+  if (wa.length >= wb.length && wb.every((w, i) => wa[wa.length - wb.length + i] === w)) return A // b já está no fim de a
+  // Sobreposição: o fim de a é o começo de b (uma palavra só conta se tiver 4+ letras,
+  // para não engolir "e", "o", "de" repetidos de propósito)
+  for (let k = Math.min(wa.length, wb.length) - 1; k >= 1; k--) {
+    if (k === 1 && wb[0].length < 4) break
+    if (wa.slice(-k).every((w, i) => wb[i] === w)) {
+      return `${A} ${B.split(/\s+/).slice(k).join(' ')}`.trim()
+    }
+  }
+  return `${A} ${B}`
+}
+
+const mergeAll = (parts: string[]) => parts.reduce(joinSpeech, '')
+
+/**
+ * Ditado em português. O navegador corta a escuta em silêncios longos; enquanto `listening`
+ * for true, reiniciamos automaticamente. Com `endOnSilence`, para sozinho logo depois da fala
+ * (usado no assistente, para enviar sem precisar tocar em "parar").
+ */
+export function useSpeech({ endOnSilence = false }: { endOnSilence?: boolean } = {}) {
   const [listening, setListening] = useState(false)
   const [finalText, setFinalText] = useState('')
   const [interim, setInterim] = useState('')
   const [error, setError] = useState<string | null>(null)
   const recRef = useRef<Recognition | null>(null)
   const wantRef = useRef(false)
+  /** Texto confirmado de sessões anteriores (a escuta reinicia várias vezes) */
+  const committedRef = useRef('')
+  const sessionRef = useRef('')
+  const silenceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearSilence = () => { if (silenceRef.current) { clearTimeout(silenceRef.current); silenceRef.current = null } }
 
   const start = useCallback(() => {
     const Ctor = getRecognitionCtor()
@@ -52,25 +90,49 @@ export function useSpeech() {
       return
     }
     setError(null)
+    committedRef.current = ''
+    sessionRef.current = ''
     const rec = new Ctor()
     rec.lang = 'pt-BR'
-    rec.continuous = true
+    // No Android, o modo contínuo repete frases; lá é uma frase por sessão, reiniciando sozinho
+    rec.continuous = !/Android/i.test(navigator.userAgent)
     rec.interimResults = true
+
     rec.onresult = (e) => {
-      let interimChunk = ''
-      for (let i = e.resultIndex; i < e.results.length; i++) {
+      // Remonta a sessão inteira a cada evento (o resultIndex do Android não é confiável)
+      const finals: string[] = []
+      const pending: string[] = []
+      for (let i = 0; i < e.results.length; i++) {
         const r = e.results[i]
-        if (r.isFinal) setFinalText((t) => (t ? t + ' ' : '') + r[0].transcript.trim())
-        else interimChunk += r[0].transcript
+        ;(r.isFinal ? finals : pending).push(r[0].transcript)
       }
-      setInterim(interimChunk)
+      sessionRef.current = mergeAll(finals)
+      setFinalText(joinSpeech(committedRef.current, sessionRef.current))
+      setInterim(mergeAll(pending))
+
+      if (endOnSilence) {
+        clearSilence()
+        silenceRef.current = setTimeout(() => {
+          silenceRef.current = null
+          if (!joinSpeech(committedRef.current, sessionRef.current)) return
+          wantRef.current = false
+          rec.stop()
+        }, SILENCE_MS)
+      }
     }
     rec.onerror = (e) => {
       if (e.error === 'aborted') return
+      if (e.error === 'no-speech' && (committedRef.current || sessionRef.current)) return // pausa normal
       if (e.error !== 'no-speech') wantRef.current = false
       setError(ERRORS[e.error] ?? 'O ditado falhou. Tente de novo.')
     }
     rec.onend = () => {
+      // Com endOnSilence, o relógio de silêncio continua valendo entre sessões: no Android cada
+      // pausa curta encerra a sessão, e isso não quer dizer que a pessoa terminou de falar
+      if (!endOnSilence || !wantRef.current) clearSilence()
+      committedRef.current = joinSpeech(committedRef.current, sessionRef.current)
+      sessionRef.current = ''
+      setFinalText(committedRef.current)
       setInterim('')
       if (wantRef.current) {
         try { rec.start() } catch { wantRef.current = false; setListening(false) }
@@ -82,19 +144,25 @@ export function useSpeech() {
     wantRef.current = true
     setListening(true)
     try { rec.start() } catch { /* já estava rodando */ }
-  }, [])
+  }, [endOnSilence])
 
   const stop = useCallback(() => {
     wantRef.current = false
+    clearSilence()
     recRef.current?.stop()
   }, [])
 
-  const reset = useCallback(() => { setFinalText(''); setInterim('') }, [])
+  const reset = useCallback(() => {
+    committedRef.current = ''
+    sessionRef.current = ''
+    setFinalText('')
+    setInterim('')
+  }, [])
 
-  useEffect(() => () => { wantRef.current = false; recRef.current?.abort() }, [])
+  useEffect(() => () => { wantRef.current = false; clearSilence(); recRef.current?.abort() }, [])
 
   /** Texto completo até agora, incluindo o trecho ainda não confirmado */
-  const text = [finalText, interim].filter(Boolean).join(' ')
+  const text = joinSpeech(finalText, interim)
 
   return { listening, text, finalText, interim, error, start, stop, reset }
 }

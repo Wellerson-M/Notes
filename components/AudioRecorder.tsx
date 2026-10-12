@@ -10,12 +10,24 @@ interface Props {
   onSave: (transcript: string) => void
   /** Texto do botão de parar (ex.: "Parar e enviar" no assistente) */
   stopLabel?: string
+  /** Entrega sozinho quando a pessoa para de falar (assistente) */
+  autoSend?: boolean
 }
 
-export default function AudioRecorder({ onClose, onSave, stopLabel = 'Parar e inserir' }: Props) {
+export default function AudioRecorder({ onClose, onSave, stopLabel = 'Parar e inserir', autoSend = false }: Props) {
   const [elapsed, setElapsed] = useState(0)
-  const { listening, text: transcript, error, start, stop } = useSpeech()
+  const { listening, text: transcript, error, start, stop } = useSpeech({ endOnSilence: autoSend })
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const delivered = useRef(false)
+  const startedRef = useRef(false)
+
+  // Com autoSend, a escuta termina sozinha após a fala: entrega o texto na hora
+  useEffect(() => {
+    if (listening) { startedRef.current = true; return }
+    if (!autoSend || !startedRef.current || delivered.current || !transcript.trim()) return
+    delivered.current = true
+    onSave(transcript.trim())
+  }, [autoSend, listening, transcript, onSave])
 
   useEffect(() => {
     start()
@@ -32,6 +44,8 @@ export default function AudioRecorder({ onClose, onSave, stopLabel = 'Parar e in
   const handleStop = () => {
     stop()
     if (timerRef.current) clearInterval(timerRef.current)
+    if (delivered.current) return
+    delivered.current = true
     if (transcript.trim()) onSave(transcript.trim())
     else onClose()
   }
@@ -136,7 +150,7 @@ export default function AudioRecorder({ onClose, onSave, stopLabel = 'Parar e in
       >
         {transcript || (
           <span className="italic" style={{ color: 'var(--text-muted)' }}>
-            {error ?? (listening ? 'pode falar...' : '')}
+            {error ?? (listening ? (autoSend ? 'pode falar — envio quando você parar' : 'pode falar...') : '')}
           </span>
         )}
         {transcript && error && (

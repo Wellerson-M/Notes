@@ -2,9 +2,12 @@ import { GoogleGenAI, type GenerateContentParameters } from '@google/genai'
 import { isAuthenticated, unauthorized } from '@/lib/auth'
 import type { AIRequest, NoteDigest, TransformAction } from '@/lib/ai-types'
 
-const MODEL = process.env.GEMINI_MODEL ?? 'gemini-flash-latest'
-/** Reserva quando o modelo principal está sobrecarregado (503) — mais leve e quase sempre livre */
-const FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL ?? 'gemini-flash-lite-latest'
+/**
+ * Principal: o Flash-Lite responde em ~1,5s e tem cota grátis bem maior. O Flash "pensa" antes
+ * de responder (5–30s) e a cota diária grátis acaba rápido — fica de reserva.
+ */
+const MODEL = process.env.GEMINI_MODEL ?? 'gemini-flash-lite-latest'
+const FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL ?? 'gemini-flash-latest'
 const EMBED_MODEL = process.env.GEMINI_EMBED_MODEL ?? 'gemini-embedding-001'
 const EMBED_DIMS = 256
 const MAX_IMAGE_B64 = 4_000_000

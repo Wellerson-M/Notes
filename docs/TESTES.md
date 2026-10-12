@@ -42,6 +42,10 @@ E2E_PASSWORD=<sua APP_PASSWORD> npm run e2e  # terminal 2 (PowerShell: $env:E2E_
 
 `scripts/e2e-gestos.cjs` testa o deslizar dos cards com o mouse: o card segue o dedo 1:1, um arraste curto ou lento volta sem apagar nem abrir a nota, deslizar à direita fixa, movimento vertical não arrasta, um peteleco (≥ 56px em até 300ms) apaga, desfazer devolve e o toque abre. Também testa o login com a senha **direto na folha da IA**. O sync é simulado: nada vai para o Atlas. Usa o mesmo servidor e `E2E_PASSWORD` do teste acima.
 
+## Teste da voz (`npm run e2e:voz`)
+
+`scripts/e2e-voz.cjs` troca o reconhecimento de voz do navegador por um simulado que se comporta como o Chrome do **Android**: repete a frase inteira a cada resultado e encerra a sessão a cada pausa. O teste confere que o texto chega ao assistente sem repetições e é enviado sozinho quando a fala termina. A IA e o sync são simulados.
+
 ## Roteiro manual no celular (depois de cada deploy importante)
 
 O que o teste automático não alcança: voz, instalação, gestos de toque, câmera, biometria e o "compartilhar" do sistema.
