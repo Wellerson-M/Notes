@@ -1,14 +1,20 @@
 import { GoogleGenAI, type GenerateContentParameters } from '@google/genai'
 import { isAuthenticated, unauthorized } from '@/lib/auth'
 import type { AIRequest, NoteDigest, TransformAction } from '@/lib/ai-types'
+import { EMBED_LABEL, MODEL_TIERS, pickTiers, type ModelPref, type ModelTier, type TaskInfo } from '@/lib/ai-models'
+import { recordUsage, usageReport, type Outcome } from '@/lib/usage'
 
 /**
- * Principal: o Flash-Lite responde em ~1,5s e tem cota grátis bem maior. O Flash "pensa" antes
- * de responder (5–30s) e a cota diária grátis acaba rápido — fica de reserva.
+ * Modelos por nível (trocáveis por variável de ambiente). O Flash-Lite responde em ~1,5s e tem
+ * cota grátis maior; o Flash "pensa" antes (5–20s) e a cota diária grátis acaba rápido.
+ * Quem escolhe entre eles é a preferência de Ajustes (ou o Automático, em lib/ai-models.ts).
  */
-const MODEL = process.env.GEMINI_MODEL ?? 'gemini-flash-lite-latest'
-const FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL ?? 'gemini-flash-latest'
-const EMBED_MODEL = process.env.GEMINI_EMBED_MODEL ?? 'gemini-embedding-001'
+const MODEL_IDS: Record<ModelTier, string> = {
+  fast: process.env.GEMINI_MODEL ?? MODEL_TIERS.fast.defaultId,
+  smart: process.env.GEMINI_FALLBACK_MODEL ?? MODEL_TIERS.smart.defaultId,
+  pro: process.env.GEMINI_PRO_MODEL ?? MODEL_TIERS.pro.defaultId,
+}
+const EMBED_MODEL = process.env.GEMINI_EMBED_MODEL ?? EMBED_LABEL.defaultId
 const EMBED_DIMS = 256
 const MAX_IMAGE_B64 = 4_000_000
 const MAX_EMBED_TEXTS = 100
@@ -64,6 +70,8 @@ const ASSISTANT_SCHEMA = {
           title: { type: 'string' },
           content: { type: 'string' },
           tags: { type: 'array', items: { type: 'string' } },
+          date: { type: 'string', description: 'só em create_note com data: AAAA-MM-DD' },
+          time: { type: 'string', description: 'só se houver hora: HH:MM (24h)' },
         },
         required: ['type'],
       },
@@ -79,6 +87,12 @@ const ASSISTANT_RULES = `Você é o assistente das notas do usuário. Entenda o 
 - se quer ACRESCENTAR algo a uma nota existente (ex.: "põe leite na lista de compras"), proponha "append_to_note" com o noteId certo e só o trecho novo;
 - se quer ABRIR ou achar uma nota, proponha "open_note";
 - se for conversa, ideia ou pedido de sugestão, responda e, se fizer sentido, proponha salvar como nota.
+
+Regras de conteúdo:
+- LISTAS de coisas a fazer, comprar, levar ou checar (compras, ingredientes a comprar, tarefas, mala) são SEMPRE checklist, uma por linha: "- [ ] item". Nunca use "- item" nesses casos.
+- Quando criar MAIS DE UMA nota relacionada (ex.: receita + lista de compras), LIGUE as notas: no fim do conteúdo de cada uma, escreva "Relacionada: [[Título exato da outra]]".
+- DATAS: se o pedido tem um quando (hoje, amanhã, sexta, dia 20, às 9h, semana que vem), preencha "date" (AAAA-MM-DD) e, se houver hora, "time" (HH:MM, 24h) no create_note. Calcule a partir da data de hoje informada. Sem hora dita, deixe "time" vazio.
+- Para perguntas sobre agenda ("o que tenho amanhã?"), use as datas marcadas como "📅" nas notas.
 Nunca invente ids: use apenas os da lista. Seja breve na resposta.`
 
 const OCR_PROMPT = `Transcreva todo o texto da imagem (pode ser foto de quadro, caderno, livro, print ou documento).
@@ -113,12 +127,15 @@ export async function POST(request: Request) {
   if (!body) return Response.json({ error: 'corpo inválido' }, { status: 400 })
 
   const ai = new GoogleGenAI({ apiKey })
+  const pref = (body as { model?: ModelPref }).model ?? 'auto'
+  const [main, backup] = pickTiers(['auto', 'fast', 'smart', 'pro'].includes(pref) ? pref : 'auto', taskInfo(body))
+  const generate = generator(ai, [MODEL_IDS[main], MODEL_IDS[backup]])
 
   try {
     if (body.kind === 'transform') {
       const instruction = TRANSFORMS[body.action]
       if (!instruction) return Response.json({ error: 'ação desconhecida' }, { status: 400 })
-      const res = await generate(ai, {
+      const res = await generate({
         contents: [
           instruction,
           'Devolva apenas o texto resultante, sem comentários.',
@@ -133,7 +150,7 @@ export async function POST(request: Request) {
     }
 
     if (body.kind === 'suggest') {
-      const res = await generate(ai, {
+      const res = await generate({
         contents: [
           'Analise a nota abaixo e sugira melhorias. Para "related", use somente ids da lista de outras notas.',
           '',
@@ -155,9 +172,9 @@ export async function POST(request: Request) {
         .slice(-8)
         .map((t) => `${t.role === 'user' ? 'Usuário' : 'Você'}: ${t.text}`)
         .join('\n')
-      const res = await generate(ai, {
+      const res = await generate({
         contents: [
-          `Hoje é ${body.today}.`,
+          `Hoje é ${body.today}${body.todayIso ? ` (${body.todayIso})` : ''}.`,
           ASSISTANT_RULES,
           '',
           'NOTAS DO USUÁRIO (as mais relevantes)',
@@ -177,7 +194,7 @@ export async function POST(request: Request) {
       if (typeof body.image !== 'string' || body.image.length > MAX_IMAGE_B64 || !/^image\/(jpeg|png|webp)$/.test(body.mimeType)) {
         return Response.json({ error: 'Imagem inválida ou grande demais.' }, { status: 400 })
       }
-      const res = await generate(ai, {
+      const res = await generate({
         contents: [{
           role: 'user',
           parts: [
@@ -197,12 +214,13 @@ export async function POST(request: Request) {
         model: EMBED_MODEL,
         contents: texts,
         config: { taskType: body.task === 'query' ? 'RETRIEVAL_QUERY' : 'RETRIEVAL_DOCUMENT', outputDimensionality: EMBED_DIMS },
-      })
+      }).catch((err) => { void recordUsage(EMBED_MODEL, outcomeOf(err)); throw err })
+      void recordUsage(EMBED_MODEL, 'ok')
       return Response.json({ vectors: (res.embeddings ?? []).map((e) => normalize(e.values ?? [])) })
     }
 
     if (body.kind === 'review') {
-      const res = await generate(ai, {
+      const res = await generate({
         contents: [
           `Faça uma retrospectiva das anotações do usuário no período: ${body.period}.`,
           REVIEW_RULES,
@@ -245,26 +263,67 @@ const overloaded = (err: unknown) =>
 /** No plano grátis cada modelo tem a sua cota: limite (429) no principal também vale tentar o reserva */
 const retryable = (err: unknown) => overloaded(err) || (err as { status?: number }).status === 429
 
+const outcomeOf = (err: unknown) => ((err as { status?: number }).status === 429 ? 'limited' : 'error') as Outcome
+
 /**
- * Gera com o modelo principal; se o Google estiver sobrecarregado (500/503), a cota do modelo
- * acabar (429) ou ele demorar demais, tenta o modelo reserva uma vez.
+ * Gerador do pedido: tenta o modelo principal; se o Google estiver sobrecarregado (500/503), a
+ * cota do modelo acabar (429) ou ele demorar demais, tenta o reserva uma vez. Cada tentativa
+ * entra no contador de uso (Ajustes → IA).
  */
-async function generate(ai: GoogleGenAI, params: Omit<GenerateContentParameters, 'model'>) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), PRIMARY_TIMEOUT_MS)
+function generator(ai: GoogleGenAI, [primary, backup]: [string, string]) {
+  return async (params: Omit<GenerateContentParameters, 'model'>) => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), PRIMARY_TIMEOUT_MS)
+    try {
+      const res = await ai.models.generateContent({
+        ...params,
+        model: primary,
+        config: { ...params.config, abortSignal: controller.signal },
+      })
+      void recordUsage(primary, 'ok', res.usageMetadata)
+      return res
+    } catch (err) {
+      const error = controller.signal.aborted ? new Timeout('o modelo principal demorou demais') : err
+      void recordUsage(primary, error instanceof Timeout ? 'error' : outcomeOf(error))
+      if (!retryable(error) || backup === primary) throw error
+      if (!controller.signal.aborted) await new Promise((r) => setTimeout(r, 800))
+      try {
+        const res = await ai.models.generateContent({ ...params, model: backup })
+        void recordUsage(backup, 'ok', res.usageMetadata)
+        return res
+      } catch (err2) {
+        void recordUsage(backup, outcomeOf(err2))
+        throw err2
+      }
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+}
+
+/** Tamanho do texto do pedido (para o Automático escolher o modelo) */
+function taskInfo(body: AIRequest): TaskInfo {
+  const size =
+    body.kind === 'transform' || body.kind === 'suggest' ? body.content.length
+      : body.kind === 'review' ? body.notes.reduce((s, n) => s + n.text.length, 0)
+        : body.kind === 'assistant' ? body.message.length
+          : 0
+  return { kind: body.kind, action: body.kind === 'transform' ? body.action : undefined, size }
+}
+
+/** Relatório de uso para Ajustes: contagem de hoje e da semana, por modelo */
+export async function GET() {
+  if (!(await isAuthenticated())) return unauthorized()
   try {
-    return await ai.models.generateContent({
-      ...params,
-      model: MODEL,
-      config: { ...params.config, abortSignal: controller.signal },
+    const report = await usageReport()
+    return Response.json({
+      ...report,
+      models: Object.fromEntries(Object.entries(MODEL_IDS).map(([tier, id]) => [tier, { id, ...MODEL_TIERS[tier as ModelTier] }])),
+      embed: { id: EMBED_MODEL, ...EMBED_LABEL },
     })
   } catch (err) {
-    const error = controller.signal.aborted ? new Timeout('o modelo principal demorou demais') : err
-    if (!retryable(error) || FALLBACK_MODEL === MODEL) throw error
-    if (!controller.signal.aborted) await new Promise((r) => setTimeout(r, 800))
-    return ai.models.generateContent({ ...params, model: FALLBACK_MODEL })
-  } finally {
-    clearTimeout(timer)
+    console.error('[api/ai usage]', err)
+    return Response.json({ error: 'Não deu para ler o uso agora.' }, { status: 500 })
   }
 }
 
@@ -273,7 +332,8 @@ function digestBlock(notes: NoteDigest[]) {
   return notes
     .map((n) => {
       const tags = n.tags.length ? ` #${n.tags.join(' #')}` : ''
-      return `[id:${n.id}] ${n.date} — ${n.title ?? 'sem título'}${tags}\n${n.text}`
+      const when = n.when ? ` 📅 ${n.when}` : ''
+      return `[id:${n.id}] ${n.date} — ${n.title ?? 'sem título'}${tags}${when}\n${n.text}`
     })
     .join('\n---\n')
 }

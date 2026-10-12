@@ -15,6 +15,7 @@ import AudioRecorder from '@/components/AudioRecorder'
 import SwipeBackWrapper from '@/components/SwipeBackWrapper'
 import { AIThinking } from '@/components/AISheets'
 import { noteHref } from '@/lib/routes'
+import { scheduleLabel } from '@/lib/schedule'
 
 type Message = {
   id: number
@@ -87,9 +88,9 @@ export default function AssistantClient({ initialQuery }: { initialQuery: string
       return
     }
     if (action.type === 'create_note') {
-      const note = await notesRepo.create({ title: action.title || null, content: action.content, tags: action.tags ?? [] })
+      const note = await createFromAction(action)
       setApplied((a) => ({ ...a, [key]: true }))
-      showToast('Nota criada', { actionLabel: 'abrir', onAction: () => router.push(noteHref(note.id)) })
+      showToast(note.schedule ? `Nota criada · ${scheduleLabel(note.schedule)}` : 'Nota criada', { actionLabel: 'abrir', onAction: () => router.push(noteHref(note.id)) })
       return
     }
     if (action.type === 'append_to_note') {
@@ -102,11 +103,26 @@ export default function AssistantClient({ initialQuery }: { initialQuery: string
     }
   }
 
+  /** Cria de uma vez todas as notas propostas numa resposta (ex.: receita + lista de compras, já ligadas) */
+  const applyAllCreates = async (m: Message) => {
+    const pending = (m.actions ?? []).map((a, i) => ({ a, key: `${m.id}-${i}` })).filter(({ a, key }) => a.type === 'create_note' && !applied[key])
+    const titles = pending.map(({ a }) => (a as CreateAction).title).filter(Boolean)
+    for (const { a } of pending) {
+      const action = a as CreateAction
+      // Garante a ligação mesmo se a IA esquecer o [[...]]
+      const missing = titles.filter((t) => t !== action.title && !action.content.toLowerCase().includes(`[[${t.toLowerCase()}]]`))
+      const content = missing.length ? `${action.content.trimEnd()}\n\nRelacionada: ${missing.map((t) => `[[${t}]]`).join(' · ')}` : action.content
+      await createFromAction({ ...action, content })
+    }
+    setApplied((prev) => ({ ...prev, ...Object.fromEntries(pending.map(({ key }) => [key, true as const])) }))
+    showToast(`${pending.length} notas criadas e ligadas`)
+  }
+
   const noteById = (id: string): Note | undefined => notes?.find((n) => n.id === id)
 
   return (
     <SwipeBackWrapper onBack={() => router.back()}>
-      <main style={{ background: 'var(--bg-base)', minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
+      <main style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
         <div
           className="sticky top-0 z-40 flex items-center justify-between px-4 pt-safe"
@@ -209,6 +225,15 @@ export default function AssistantClient({ initialQuery }: { initialQuery: string
                       />
                     )
                   })}
+                  {(m.actions?.filter((a, i) => a.type === 'create_note' && !applied[`${m.id}-${i}`]).length ?? 0) > 1 && (
+                    <button
+                      onClick={() => void applyAllCreates(m)}
+                      className="touch-feedback flex items-center justify-center gap-2 rounded-xl py-2.5 font-sans"
+                      style={{ background: 'var(--accent-amber)', color: 'var(--on-accent)', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}
+                    >
+                      <FilePlus size={14} /> Criar todas (já ligadas entre si)
+                    </button>
+                  )}
                 </div>
               )}
             </motion.div>
@@ -299,6 +324,32 @@ export default function AssistantClient({ initialQuery }: { initialQuery: string
   )
 }
 
+type CreateAction = Extract<AssistantAction, { type: 'create_note' }>
+
+/** Títulos de lista: se a IA mandar "- item" num deles, vira checklist "- [ ] item" */
+const LIST_TITLE = /lista|compras|mercado|checklist|levar|mala|tarefas|to-?do|pend[eê]ncias|afazeres/i
+
+function asChecklist(title: string, content: string): string {
+  if (!LIST_TITLE.test(title)) return content
+  return content.replace(/^(\s*)[-*•]\s+(?!\[[ xX]\])(.+)$/gm, '$1- [ ] $2')
+}
+
+/** Data/hora propostas pela IA, só se vierem no formato certo */
+function scheduleFrom(action: CreateAction): Note['schedule'] {
+  if (!action.date || !/^\d{4}-\d{2}-\d{2}$/.test(action.date)) return undefined
+  return /^\d{2}:\d{2}$/.test(action.time ?? '') ? { date: action.date, time: action.time } : { date: action.date }
+}
+
+function createFromAction(action: CreateAction) {
+  const title = action.title || ''
+  return notesRepo.create({
+    title: title || null,
+    content: asChecklist(title, action.content),
+    tags: action.tags ?? [],
+    schedule: scheduleFrom(action),
+  })
+}
+
 function roundButton(primary: boolean): React.CSSProperties {
   return {
     width: 42,
@@ -324,7 +375,12 @@ function ActionCard({ action, done, target, onApply }: {
 
   const { Icon, label, button, preview } =
     action.type === 'create_note'
-      ? { Icon: FilePlus, label: `Nova nota: ${action.title || 'sem título'}`, button: 'Criar', preview: action.content }
+      ? {
+          Icon: FilePlus,
+          label: `Nova nota: ${action.title || 'sem título'}${scheduleFrom(action) ? ` · ${scheduleLabel(scheduleFrom(action)!)}` : ''}`,
+          button: 'Criar',
+          preview: asChecklist(action.title || '', action.content),
+        }
       : action.type === 'append_to_note'
         ? { Icon: FileText, label: `Acrescentar em “${target?.title ?? 'sem título'}”`, button: 'Adicionar', preview: action.content }
         : { Icon: ExternalLink, label: target?.title ?? 'sem título', button: 'Abrir', preview: '' }

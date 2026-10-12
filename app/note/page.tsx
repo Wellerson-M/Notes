@@ -27,8 +27,12 @@ function NoteRoute() {
   const params = useSearchParams()
   const id = params.get('id')
   const mode = params.get('mode') ?? 'text'
-  const shared = sharedDraft(params)
+  const date = params.get('date')
   const inVault = params.get('vault') === '1'
+  // `&date=AAAA-MM-DD` (vindo da Agenda) começa a nota já agendada para o dia
+  const schedule = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? { date } : undefined
+  const shared = sharedDraft(params) ?? (schedule ? { title: '', content: '' } : undefined)
+  if (shared && schedule) shared.schedule = schedule
 
   // key: ao trocar de nota (wikilink) ou começar outra, o editor reinicia do zero
   if (!id) {

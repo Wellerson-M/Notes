@@ -11,8 +11,9 @@ import { useNotes } from '@/lib/repo'
 import { syncNow } from '@/lib/sync'
 import { useUIStore } from '@/store/ui'
 import EmptyState from '@/components/EmptyState'
+import { isPast, sortValue } from '@/lib/schedule'
 
-const FILTERS = ['Tudo', 'Hoje', 'Esta semana', 'Tarefas', 'Fixadas', 'Vault']
+const FILTERS = ['Tudo', 'Hoje', 'Agendadas', 'Esta semana', 'Tarefas', 'Fixadas', 'Vault']
 
 function filterNotes(notes: Note[], filter: string) {
   const now = new Date()
@@ -27,6 +28,11 @@ function filterNotes(notes: Note[], filter: string) {
         const d = new Date(n.createdAt)
         return !n.inVault && (now.getTime() - d.getTime()) / 86400000 <= 7
       })
+    case 'Agendadas':
+      // O que ainda vai acontecer, do mais próximo para o mais distante
+      return notes
+        .filter((n) => !n.inVault && n.schedule && !isPast(n.schedule))
+        .sort((a, b) => sortValue(a.schedule!).localeCompare(sortValue(b.schedule!)))
     case 'Tarefas':
       return notes.filter((n) => !n.inVault && (n.tasks?.length ?? 0) > 0)
     case 'Fixadas':
@@ -47,7 +53,7 @@ export default function TimelinePage() {
 
   const allNotes = useNotes()
   const notes = filterNotes(allNotes ?? [], activeFilter)
-  const sortedNotes = [...notes].sort((a, b) => {
+  const sortedNotes = activeFilter === 'Agendadas' ? notes : [...notes].sort((a, b) => {
     if (a.pinned && !b.pinned) return -1
     if (!a.pinned && b.pinned) return 1
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -96,7 +102,7 @@ export default function TimelinePage() {
   }, [])
 
   return (
-    <main style={{ background: 'var(--bg-base)', minHeight: '100dvh', paddingBottom: 88 }}>
+    <main style={{ minHeight: '100dvh', paddingBottom: 88 }}>
       <motion.div
         animate={{ y: headerVisible ? 0 : -120, opacity: headerVisible ? 1 : 0 }}
         transition={{ duration: 0.2 }}

@@ -10,7 +10,7 @@ npm run build             # precisa passar
 
 ## Teste ponta a ponta automatizado
 
-`scripts/e2e.cjs` abre um **Chrome de verdade** (via `playwright-core`) e roda os fluxos principais duas vezes: em perfil **celular** (390px, touch) e **PC** (1366px). São 76 verificações (38 por perfil):
+`scripts/e2e.cjs` abre um **Chrome de verdade** (via `playwright-core`) e roda os fluxos principais duas vezes: em perfil **celular** (390px, touch) e **PC** (1366px). São 78 verificações (39 por perfil):
 
 - login (senha errada e certa)
 - criar nota pelo botão +, com título, tarefa, tag e `[[wikilink]]`
@@ -18,24 +18,26 @@ npm run build             # precisa passar
 - backlink "Mencionada em" e clique no wikilink
 - fixar pelo menu; **IA de verdade**: resumir, **foto → texto** (uma imagem gerada com texto conhecido), resumo da semana, **busca por sentido** ("bebida quente" acha a nota do café) e assistente
 - folha de "Versões anteriores"
+- **agenda:** agendar a nota para amanhã pelo editor e ela aparecer em "Próximos"
 - **Vault:** pede para criar a senha; cria; a nota movida **fica cifrada no IndexedDB** (`cipher` começa com `gv1.` e o texto não aparece); trancar esconde; senha errada recusa; senha certa abre; IA bloqueada; apagar e **desfazer**; tirar do Vault
 - **compartilhar de outro app** (`/note?title=&text=&url=`) cria a nota sozinho
 - exportar em Markdown baixa um `.zip` válido
 - **offline:** abre a timeline e uma nota sem rede
 - nenhum erro de JavaScript no console
 
+> ⚠️ **Nunca rode o e2e contra o banco real.** O teste cria, cifra e apaga notas, cria um Vault e espera um banco vazio. O servidor de teste sobe com `MONGODB_DB=grafite-notas-e2e` (mesmo cluster, outro banco), zerado antes de cada rodada.
+
 ```bash
 npm run build
-npx next start -p 3123                       # terminal 1
-E2E_PASSWORD=<sua APP_PASSWORD> npm run e2e  # terminal 2 (PowerShell: $env:E2E_PASSWORD="..."; npm run e2e)
+npm run e2e:db                                              # zera o banco de testes
+MONGODB_DB=grafite-notas-e2e npx next start -p 3123         # terminal 1 (PowerShell: $env:MONGODB_DB="grafite-notas-e2e"; npx next start -p 3123)
+E2E_PASSWORD=<sua APP_PASSWORD> npm run e2e                 # terminal 2 (PowerShell: $env:E2E_PASSWORD="..."; npm run e2e)
 ```
 
 - Capturas de cada etapa vão para `.e2e/` (fora do git).
-- Usa o Atlas do `.env.local`: as notas de teste são apagadas no fim, mas ficam no banco como exclusões lógicas.
-- Em outro sistema, aponte `CHROME_PATH` para o executável do Chrome. Para testar a produção: `E2E_BASE=https://notes-ten-tau-15.vercel.app`.
-- Com `GEMINI_API_KEY`, a IA é chamada de verdade (gasta um pouco da cota grátis). Se o Google estiver sobrecarregado ou a cota acabar, as verificações de IA aceitam o aviso amigável.
-- O Vault de teste (senha aleatória) existe só no navegador do teste. A nota cifrada passa pelo Atlas e é apagada no fim.
-- Se o teste quebrar no meio, sobra nota de teste no Atlas (título "Nota celular 1234567"). Ela aparece nos seus aparelhos e pode ser apagada normalmente.
+- Em outro sistema, aponte `CHROME_PATH` para o executável do Chrome. **Não** aponte `E2E_BASE` para a produção: ela usa o banco real.
+- Com `GEMINI_API_KEY`, a IA é chamada de verdade (gasta um pouco da cota grátis e entra no contador de uso). Se o Google estiver sobrecarregado ou a cota acabar, as verificações de IA aceitam o aviso amigável.
+- O Vault de teste (senha aleatória) existe só no navegador e no banco de testes.
 - Em falha, a tela do momento vai para `.e2e/<perfil>-ERRO.png`.
 
 ## Teste dos gestos (`npm run e2e:gestos`)

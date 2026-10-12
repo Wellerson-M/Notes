@@ -2,12 +2,13 @@
 import { useState, useRef } from 'react'
 import { animate, motion, useMotionValue, useMotionValueEvent, useTransform, type PanInfo } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { Pin, Lock, Mic, Image as ImageIcon, CheckSquare, Link2, Trash2 } from 'lucide-react'
+import { Pin, Lock, Mic, Image as ImageIcon, CheckSquare, Link2, Trash2, CalendarDays } from 'lucide-react'
 import type { Note } from '@/lib/types'
-import { getRelativeDate, formatDuration } from '@/lib/notes'
+import { getRelativeDate, formatDuration, toggleTaskAt } from '@/lib/notes'
 import { notesRepo, removeWithUndo } from '@/lib/repo'
 import { useUIStore } from '@/store/ui'
 import { noteHref } from '@/lib/routes'
+import { isPast, scheduleLabel } from '@/lib/schedule'
 
 interface Props {
   note: Note
@@ -81,8 +82,16 @@ export default function NoteCard({ note, showInkWave = false, revealed = false }
     void animate(x, 0, SPRING)
   }
 
-  const handleTap = () => {
+  const handleTap = (event: MouseEvent | TouchEvent | PointerEvent) => {
     if (busy.current || dragged.current) return
+    // Tocar numa caixinha da prévia marca a tarefa, sem abrir a nota
+    const task = (event.target as Element | null)?.closest?.('[data-task-index]')
+    if (task && !note.cipher) {
+      const index = Number(task.getAttribute('data-task-index'))
+      void notesRepo.update(note.id, { content: toggleTaskAt(note.content, index) })
+      try { navigator.vibrate?.(8) } catch { /* sem vibração */ }
+      return
+    }
     router.push(noteHref(note.id))
   }
 
@@ -104,12 +113,12 @@ export default function NoteCard({ note, showInkWave = false, revealed = false }
   const totalTasks = note.tasks?.length ?? 0
 
   return (
-    <div ref={cardRef} style={{ position: 'relative', overflow: 'hidden', borderRadius: 16 }}>
+    <div ref={cardRef} style={{ position: 'relative', overflow: 'hidden', borderRadius: 'var(--card-radius)', boxShadow: 'var(--card-shadow)' }}>
       {/* Fundo do deslize para a esquerda (apagar) */}
       <motion.div
         aria-hidden
         style={{
-          position: 'absolute', inset: 0, borderRadius: 16, background: 'var(--danger)',
+          position: 'absolute', inset: 0, borderRadius: 'var(--card-radius)', background: 'var(--danger)',
           display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, paddingRight: 24,
           opacity: deleteOpacity,
         }}
@@ -124,7 +133,7 @@ export default function NoteCard({ note, showInkWave = false, revealed = false }
       <motion.div
         aria-hidden
         style={{
-          position: 'absolute', inset: 0, borderRadius: 16, background: 'var(--accent-gold)',
+          position: 'absolute', inset: 0, borderRadius: 'var(--card-radius)', background: 'var(--accent-gold)',
           display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 8, paddingLeft: 24,
           opacity: pinOpacity,
         }}
@@ -153,7 +162,7 @@ export default function NoteCard({ note, showInkWave = false, revealed = false }
           border: note.inVault
             ? '1px solid var(--accent-gold)'
             : `1px solid var(--border-subtle)`,
-          borderRadius: 16,
+          borderRadius: 'var(--card-radius)',
           padding: 20,
           cursor: 'pointer',
           userSelect: 'none',
@@ -162,8 +171,21 @@ export default function NoteCard({ note, showInkWave = false, revealed = false }
       >
         {/* Top row: date + attribute icons */}
         <div className="flex items-center justify-between mb-2">
-          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
+          <span className="flex items-center gap-2" style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
             {getRelativeDate(note.createdAt)}
+            {note.schedule && (
+              <span
+                className="flex items-center gap-1"
+                style={{
+                  borderRadius: 20, padding: '1px 7px', fontWeight: 600,
+                  color: isPast(note.schedule) ? 'var(--text-muted)' : 'var(--accent-amber)',
+                  background: isPast(note.schedule) ? 'transparent' : 'var(--accent-amber-soft)',
+                  border: `1px solid ${isPast(note.schedule) ? 'var(--border-default)' : 'var(--accent-border)'}`,
+                }}
+              >
+                <CalendarDays size={10} /> {scheduleLabel(note.schedule)}
+              </span>
+            )}
           </span>
           <div className="flex items-center gap-2">
             {note.pinned && <Pin size={12} style={{ color: 'var(--accent-amber)' }} fill="var(--accent-amber)" />}
@@ -178,9 +200,9 @@ export default function NoteCard({ note, showInkWave = false, revealed = false }
         {/* Title */}
         {note.title && (
           <h3
-            className="font-sans font-semibold mb-1"
+            className="font-title mb-1"
             style={{
-              fontSize: 15,
+              fontSize: 16,
               color: 'var(--text-primary)',
               lineHeight: '22px',
             }}
@@ -313,7 +335,7 @@ export default function NoteCard({ note, showInkWave = false, revealed = false }
         {note.tasks && note.tasks.length > 0 && (
           <div className="mt-3 flex flex-col gap-1">
             {note.tasks.slice(0, 3).map((task, i) => (
-              <div key={i} className="flex items-center gap-2">
+              <div key={i} data-task-index={i} className="flex items-center gap-2" style={{ padding: '5px 0', margin: '-3px 0', cursor: 'pointer' }}>
                 <div
                   style={{
                     width: 14,

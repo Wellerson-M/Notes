@@ -2,6 +2,8 @@
 import type { AIRequest, AssistantReply, NoteDigest, Suggestions, TransformAction, ChatTurn } from './ai-types'
 import type { Note } from './types'
 import { getPreview } from './notes'
+import { getModelPref } from './ai-models'
+import { dateKey, parseKey } from './schedule'
 
 export class AIError extends Error {}
 
@@ -15,7 +17,8 @@ async function call<T>(body: AIRequest): Promise<T> {
   const res = await fetch('/api/ai', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    // A preferência de modelo (Ajustes → IA) vai junto; o servidor decide no Automático
+    body: JSON.stringify({ ...body, model: getModelPref() }),
   })
   const data = await res.json().catch(() => ({}))
   if (res.status === 401) throw new AIError(AI_LOGIN_MESSAGE)
@@ -38,7 +41,10 @@ export function buildDigests(notes: Note[], query = '', limit = 40, excludeId?: 
       const hay = normalize(`${n.title ?? ''} ${n.tags.join(' ')} ${n.content}`)
       const hits = words.reduce((acc, w) => acc + (hay.includes(w) ? 1 : 0), 0)
       const ageDays = (now - new Date(n.updatedAt).getTime()) / 86400000
-      return { n, score: hits * 10 + Math.max(0, 5 - ageDays / 7) + (n.pinned ? 2 : 0) }
+      // Compromissos dos próximos 14 dias entram mesmo sem palavra em comum (perguntas de agenda)
+      const daysAhead = n.schedule ? (parseKey(n.schedule.date).getTime() - now) / 86400000 : NaN
+      const upcoming = daysAhead > -1 && daysAhead < 14 ? 6 : 0
+      return { n, score: hits * 10 + Math.max(0, 5 - ageDays / 7) + (n.pinned ? 2 : 0) + upcoming }
     })
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
@@ -48,6 +54,7 @@ export function buildDigests(notes: Note[], query = '', limit = 40, excludeId?: 
       tags: n.tags,
       date: new Date(n.createdAt).toLocaleDateString('pt-BR'),
       text: getPreview(n.content, 400),
+      when: n.schedule ? `${n.schedule.date}${n.schedule.time ? ` ${n.schedule.time}` : ''}` : undefined,
     }))
 }
 
@@ -71,6 +78,7 @@ export const ai = {
       history,
       notes: buildDigests(all, message),
       today: new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
+      todayIso: dateKey(new Date()),
     }),
 
   /** Foto (já comprimida no aparelho) → texto em markdown */

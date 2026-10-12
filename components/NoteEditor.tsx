@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MoreVertical, Pin, Lock, Unlock, FileText, Trash2, BookOpen, GitFork, History } from 'lucide-react'
+import { MoreVertical, Pin, Lock, Unlock, FileText, Trash2, BookOpen, GitFork, History, CalendarDays } from 'lucide-react'
 import type { Note } from '@/lib/types'
 import type { Suggestions, TransformAction } from '@/lib/ai-types'
 import { notesRepo, removeWithUndo, useNotes, VaultLockedError } from '@/lib/repo'
@@ -20,6 +20,8 @@ import NeighborhoodMap from './NeighborhoodMap'
 import SwipeBackWrapper from './SwipeBackWrapper'
 import { AIResultSheet, SuggestionsSheet } from './AISheets'
 import VersionsSheet from './VersionsSheet'
+import ScheduleSheet, { downloadIcs } from './ScheduleSheet'
+import { isPast, scheduleLabel, type Schedule } from '@/lib/schedule'
 
 const SAVE_DEBOUNCE_MS = 600
 
@@ -46,8 +48,8 @@ function SavingIndicator({ state }: { state: 'idle' | 'saving' | 'saved' }) {
   )
 }
 
-type Draft = { title: string; content: string; tags: string[] }
-export type NoteDraft = { title: string; content: string }
+type Draft = { title: string; content: string; tags: string[]; schedule?: Schedule }
+export type NoteDraft = { title: string; content: string; schedule?: Schedule }
 
 interface Props {
   /** Nota existente, ou null para uma nota nova (criada só quando algo for escrito) */
@@ -69,6 +71,8 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
   const [title, setTitle] = useState(note?.title ?? initial?.title ?? '')
   const [content, setContent] = useState(initialContent)
   const [tags, setTags] = useState<string[]>(note?.tags ?? [])
+  const [schedule, setSchedule] = useState<Schedule | undefined>(note?.schedule ?? initial?.schedule)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
   const [newTag, setNewTag] = useState('')
   const [readingMode, setReadingMode] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -83,7 +87,7 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
   // Refs guardam o estado mais recente para o salvamento debounced e o flush ao sair
   const noteIdRef = useRef<string | null>(note?.id ?? null)
   const [noteId, setNoteId] = useState<string | null>(note?.id ?? null)
-  const draftRef = useRef<Draft>({ title, content, tags })
+  const draftRef = useRef<Draft>({ title, content, tags, schedule })
   const dirtyRef = useRef(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savingRef = useRef<Promise<void>>(Promise.resolve())
@@ -98,15 +102,15 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
     if (!dirtyRef.current) return savingRef.current
     dirtyRef.current = false
-    const { title: t, content: c, tags: tg } = draftRef.current
-    const data = { title: t.trim() || null, content: c, tags: tg }
+    const { title: t, content: c, tags: tg, schedule: sc } = draftRef.current
+    const data = { title: t.trim() || null, content: c, tags: tg, schedule: sc }
 
     savingRef.current = savingRef.current.then(async () => {
       if (noteIdRef.current) {
         await notesRepo.update(noteIdRef.current, data)
       } else {
         // Nota nova só nasce quando tiver algo além do conteúdo inicial do modo
-        if (!data.title && c.trim() === (INITIAL_CONTENT[mode] ?? '').trim() && !tg.length) return
+        if (!data.title && c.trim() === (INITIAL_CONTENT[mode] ?? '').trim() && !tg.length && !sc) return
         noteIdRef.current = (await notesRepo.create({ ...data, inVault: newInVault })).id
         setNoteId(noteIdRef.current)
       }
@@ -148,7 +152,8 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
   // Conteúdo compartilhado de outro app vira nota na hora, sem precisar digitar nada
   const sharedSaved = useRef(false)
   useEffect(() => {
-    if (!initial || sharedSaved.current) return
+    // Só conteúdo compartilhado é salvo na hora; uma nota que só veio com data espera a pessoa escrever
+    if (!initial || (!initial.title && !initial.content) || sharedSaved.current) return
     sharedSaved.current = true
     scheduleSave({ title: initial.title, content: initial.content })
   }, [initial, scheduleSave])
@@ -161,6 +166,7 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
   const handleContentChange = (val: string) => { setContent(val); scheduleSave({ content: val }) }
   const handleTitleChange = (val: string) => { setTitle(val); scheduleSave({ title: val }) }
   const updateTags = (next: string[]) => { setTags(next); scheduleSave({ tags: next }) }
+  const updateSchedule = (next: Schedule | undefined) => { setSchedule(next); scheduleSave({ schedule: next }) }
   const appendContent = (extra: string) => {
     const base = draftRef.current.content
     handleContentChange(base + (base.trim() ? '\n\n' : '') + extra)
@@ -296,7 +302,7 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
         initial={isNew ? { opacity: 0, y: 20 } : { opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0, y: 0 }}
         transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
-        style={{ background: 'var(--bg-base)', minHeight: '100dvh', paddingBottom: readingMode ? 60 : 100 }}
+        style={{ minHeight: '100dvh', paddingBottom: readingMode ? 60 : 100 }}
       >
         {/* Top bar */}
         <div
@@ -376,6 +382,22 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
             <span className="font-sans" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
               {isNew && !noteId ? 'agora' : createdDate}
             </span>
+            {/* Agenda: a data em que esta nota "acontece" (compromisso, prazo, lembrete) */}
+            {(schedule || !readingMode) && (
+              <button
+                onClick={() => !readingMode && setScheduleOpen(true)}
+                className="flex items-center gap-1 font-sans"
+                style={{
+                  fontSize: 11, borderRadius: 20, padding: '2px 9px', cursor: readingMode ? 'default' : 'pointer',
+                  color: schedule ? (isPast(schedule) ? 'var(--text-muted)' : 'var(--on-accent)') : 'var(--text-muted)',
+                  background: schedule && !isPast(schedule) ? 'var(--accent-amber)' : 'transparent',
+                  border: `1px ${schedule ? 'solid' : 'dashed'} ${schedule && !isPast(schedule) ? 'var(--accent-amber)' : 'var(--border-strong)'}`,
+                }}
+              >
+                <CalendarDays size={11} />
+                {schedule ? scheduleLabel(schedule) : 'agendar'}
+              </button>
+            )}
             {tags.map((tag) => (
               <span
                 key={tag}
@@ -514,6 +536,20 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
               onLinkNote={(n) => { appendContent(`[[${n.title ?? ''}]]`); showToast('Conexão criada') }}
               onAddIdea={(idea) => { appendContent(`- [ ] ${idea}`); showToast('Ideia adicionada como tarefa') }}
               onClose={() => setSuggestions(null)}
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {scheduleOpen && (
+            <ScheduleSheet
+              value={schedule}
+              onChange={(next) => { updateSchedule(next); setScheduleOpen(false) }}
+              onClose={() => setScheduleOpen(false)}
+              onExport={() => {
+                if (!schedule) return
+                downloadIcs({ id: noteIdRef.current ?? 'nova', title: title || null, content, updatedAt: new Date().toISOString(), schedule })
+              }}
             />
           )}
         </AnimatePresence>

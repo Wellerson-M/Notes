@@ -9,7 +9,8 @@
     "lint": "eslint",
     "e2e": "node scripts/e2e.cjs",
     "e2e:gestos": "node scripts/e2e-gestos.cjs",
-    "e2e:voz": "node scripts/e2e-voz.cjs"
+    "e2e:voz": "node scripts/e2e-voz.cjs",
+    "e2e:db": "node --env-file=.env.local scripts/e2e-db.cjs"
   },
   "dependencies": {
     "@google/genai": "^2.28.0",

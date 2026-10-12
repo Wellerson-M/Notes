@@ -9,6 +9,7 @@ export type ThemeId = 'grafite' | 'meia-noite' | 'floresta' | 'vinho' | 'lavanda
 export type Theme = {
   id: ThemeId
   name: string
+  emoji: string
   description: string
   /** Cor da barra do sistema (meta theme-color) — igual ao fundo */
   bar: string
@@ -18,13 +19,13 @@ export type Theme = {
 }
 
 export const THEMES: Theme[] = [
-  { id: 'grafite', name: 'Grafite', description: 'âmbar sobre grafite quente', bar: '#111210', swatch: ['#111210', '#22231f', '#e8a547'] },
-  { id: 'meia-noite', name: 'Meia-noite', description: 'azul calmo, noite funda', bar: '#0e1118', swatch: ['#0e1118', '#1c2130', '#7aa2f7'] },
-  { id: 'floresta', name: 'Floresta', description: 'verde musgo e sálvia', bar: '#0f1310', swatch: ['#0f1310', '#1d241e', '#8fbf7f'] },
-  { id: 'vinho', name: 'Vinho', description: 'bordô escuro e rosé', bar: '#140f10', swatch: ['#140f10', '#261b1d', '#e07a8c'] },
-  { id: 'lavanda', name: 'Lavanda', description: 'roxo suave, quase cinza', bar: '#121017', swatch: ['#121017', '#221f2b', '#b39ddb'] },
-  { id: 'papel', name: 'Papel', description: 'claro, como um caderno', bar: '#f4efe4', swatch: ['#f4efe4', '#fffbf2', '#b5651d'], light: true },
-  { id: 'neblina', name: 'Neblina', description: 'claro e frio, azul-ardósia', bar: '#eef1f4', swatch: ['#eef1f4', '#ffffff', '#3b6ea5'], light: true },
+  { id: 'grafite', name: 'Grafite', emoji: '✏️', description: 'âmbar sobre grafite quente', bar: '#111210', swatch: ['#111210', '#22231f', '#e8a547'] },
+  { id: 'meia-noite', name: 'Meia-noite', emoji: '🌙', description: 'céu estrelado, azul calmo', bar: '#0e1118', swatch: ['#0e1118', '#1c2130', '#7aa2f7'] },
+  { id: 'floresta', name: 'Floresta', emoji: '🌿', description: 'musgo, sálvia e títulos com serifa', bar: '#0f1310', swatch: ['#0f1310', '#1d241e', '#8fbf7f'] },
+  { id: 'vinho', name: 'Vinho', emoji: '🍷', description: 'bordô, rosé e itálico elegante', bar: '#140f10', swatch: ['#140f10', '#261b1d', '#e07a8c'] },
+  { id: 'lavanda', name: 'Lavanda', emoji: '💜', description: 'roxo sonhador, cantos macios', bar: '#121017', swatch: ['#121017', '#221f2b', '#b39ddb'] },
+  { id: 'papel', name: 'Papel', emoji: '📜', description: 'caderno pautado, com margem', bar: '#f4efe4', swatch: ['#f4efe4', '#fffbf2', '#b5651d'], light: true },
+  { id: 'neblina', name: 'Neblina', emoji: '🌫️', description: 'claro, limpo e frio', bar: '#eef1f4', swatch: ['#eef1f4', '#ffffff', '#3b6ea5'], light: true },
 ]
 
 export const DEFAULT_THEME: ThemeId = 'grafite'

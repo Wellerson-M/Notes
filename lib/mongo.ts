@@ -45,3 +45,21 @@ export async function notesCollection(): Promise<Collection<NoteDoc>> {
   await globalForMongo.indexed
   return col
 }
+
+/** Contador de uso da IA: um documento por dia da cota (horário do Pacífico) e modelo */
+export type UsageDoc = {
+  _id: string
+  day: string
+  model: string
+  requests: number
+  limited: number
+  errors: number
+  inputTokens: number
+  outputTokens: number
+  lastLimitedAt?: number
+}
+
+export async function usageCollection(): Promise<Collection<UsageDoc>> {
+  const db = (await client()).db(cleanEnv(process.env.MONGODB_DB) ?? 'grafite-notas')
+  return db.collection<UsageDoc>('ai_usage')
+}
