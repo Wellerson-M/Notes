@@ -383,7 +383,7 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
                 style={{
                   fontSize: 11, color: 'var(--accent-amber)',
                   background: 'var(--accent-amber-soft)',
-                  border: '1px solid rgba(232,165,71,0.2)', borderRadius: 20,
+                  border: '1px solid rgba(var(--accent-rgb), 0.2)', borderRadius: 20,
                   padding: '2px 8px', cursor: readingMode ? 'default' : 'pointer',
                 }}
                 onClick={() => !readingMode && removeTag(tag)}
@@ -459,7 +459,7 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
               <motion.div
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 onClick={() => setSheetOpen(false)}
-                style={{ position: 'fixed', inset: 0, background: 'rgba(17,18,16,0.6)', zIndex: 60 }}
+                style={{ position: 'fixed', inset: 0, background: 'rgba(var(--bg-rgb), 0.6)', zIndex: 60 }}
               />
               <motion.div
                 className="app-bar"

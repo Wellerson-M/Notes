@@ -115,7 +115,7 @@ export default function BacklinksSection({ noteId }: Props) {
                     fontSize: 11,
                     color: 'var(--accent-amber)',
                     background: 'var(--accent-amber-soft)',
-                    border: '1px solid rgba(232,165,71,0.2)',
+                    border: '1px solid rgba(var(--accent-rgb), 0.2)',
                     borderRadius: 8,
                     padding: '4px 10px',
                     cursor: 'pointer',

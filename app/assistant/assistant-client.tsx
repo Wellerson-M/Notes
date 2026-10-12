@@ -265,7 +265,7 @@ export default function AssistantClient({ initialQuery }: { initialQuery: string
                   aria-label="Enviar"
                   style={roundButton(true)}
                 >
-                  <ArrowUp size={20} color="#111210" strokeWidth={2.5} />
+                  <ArrowUp size={20} style={{ color: 'var(--on-accent)' }} strokeWidth={2.5} />
                 </motion.button>
               ) : (
                 <motion.button
@@ -277,7 +277,7 @@ export default function AssistantClient({ initialQuery }: { initialQuery: string
                   aria-label="Falar"
                   style={roundButton(true)}
                 >
-                  <Mic size={20} color="#111210" strokeWidth={2.2} />
+                  <Mic size={20} style={{ color: 'var(--on-accent)' }} strokeWidth={2.2} />
                 </motion.button>
               )}
             </AnimatePresence>
@@ -332,7 +332,7 @@ function ActionCard({ action, done, target, onApply }: {
   return (
     <div
       className="noise-card rounded-2xl px-4 py-3"
-      style={{ background: 'var(--bg-surface)', border: `1px solid ${done ? 'var(--border-subtle)' : 'rgba(232,165,71,0.35)'}` }}
+      style={{ background: 'var(--bg-surface)', border: `1px solid ${done ? 'var(--border-subtle)' : 'rgba(var(--accent-rgb), 0.35)'}` }}
     >
       <div className="flex items-center gap-2">
         <Icon size={14} style={{ color: 'var(--accent-amber)', flexShrink: 0 }} />
@@ -345,7 +345,7 @@ function ActionCard({ action, done, target, onApply }: {
             fontSize: 12, fontWeight: 600, borderRadius: 8, padding: '5px 12px', flexShrink: 0,
             cursor: done ? 'default' : 'pointer',
             background: done ? 'transparent' : 'var(--accent-amber)',
-            color: done ? 'var(--success)' : '#111210',
+            color: done ? 'var(--success)' : 'var(--on-accent)',
             border: 'none',
           }}
         >

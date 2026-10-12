@@ -130,8 +130,8 @@ export default function NoteCard({ note, showInkWave = false, revealed = false }
         }}
       >
         <motion.div style={{ scale: pinScale, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Pin size={18} color="#111210" />
-          <span style={{ color: '#111210', fontSize: 13, fontWeight: 600 }}>{note.pinned ? 'Soltar' : 'Fixar'}</span>
+          <Pin size={18} style={{ color: 'var(--on-accent)' }} />
+          <span style={{ color: 'var(--on-accent)', fontSize: 13, fontWeight: 600 }}>{note.pinned ? 'Soltar' : 'Fixar'}</span>
         </motion.div>
       </motion.div>
 
@@ -329,7 +329,7 @@ export default function NoteCard({ note, showInkWave = false, revealed = false }
                 >
                   {task.done && (
                     <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
-                      <path d="M1 3L3 5L7 1" stroke="#111210" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M1 3L3 5L7 1" style={{ stroke: 'var(--on-accent)' }} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   )}
                 </div>
@@ -364,7 +364,7 @@ export default function NoteCard({ note, showInkWave = false, revealed = false }
                   fontSize: 11,
                   color: 'var(--accent-amber)',
                   background: 'var(--accent-amber-soft)',
-                  border: '1px solid rgba(232,165,71,0.2)',
+                  border: '1px solid rgba(var(--accent-rgb), 0.2)',
                   borderRadius: 20,
                   padding: '2px 8px',
                 }}

@@ -57,7 +57,7 @@ function SheetButton({ label, onClick, primary = false }: { label: string; onCli
         fontWeight: 600,
         cursor: 'pointer',
         background: primary ? 'var(--accent-amber)' : 'var(--bg-elevated)',
-        color: primary ? '#111210' : 'var(--text-secondary)',
+        color: primary ? 'var(--on-accent)' : 'var(--text-secondary)',
         border: primary ? 'none' : '1px solid var(--border-subtle)',
       }}
     >
@@ -172,7 +172,7 @@ export function SuggestionsSheet({
                         fontSize: 13, borderRadius: 20, padding: '4px 12px', cursor: has ? 'default' : 'pointer',
                         color: 'var(--accent-amber)',
                         background: has ? 'var(--accent-amber-soft)' : 'transparent',
-                        border: '1px solid rgba(232,165,71,0.3)',
+                        border: '1px solid var(--accent-border)',
                       }}
                     >
                       {has ? <Check size={12} /> : <Plus size={12} />}#{tag}

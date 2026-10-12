@@ -59,7 +59,7 @@ export default function ConnectInline({ onConnected }: { onConnected?: () => voi
           disabled={state === 'busy' || !password}
           className="touch-feedback rounded-xl px-4 font-sans"
           style={{
-            background: 'var(--accent-amber)', color: '#111210', fontSize: 14, fontWeight: 600, border: 'none',
+            background: 'var(--accent-amber)', color: 'var(--on-accent)', fontSize: 14, fontWeight: 600, border: 'none',
             cursor: 'pointer', opacity: state === 'busy' || !password ? 0.6 : 1,
           }}
         >

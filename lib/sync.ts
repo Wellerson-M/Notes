@@ -41,7 +41,12 @@ async function doSync(): Promise<SyncResult> {
       body: JSON.stringify({ since, notes: dirty.map(({ dirty: _d, ...n }) => n) }),
     })
     if (res.status === 401) { ui.setSyncStatus('unauthorized'); return 'unauthorized' }
-    if (!res.ok) throw new Error(`sync ${res.status}`)
+    if (!res.ok) {
+      const detail = (await res.json().catch(() => null)) as { error?: string } | null
+      ui.setSyncError(detail?.error ?? `O servidor respondeu ${res.status}.`)
+      ui.setSyncStatus('error')
+      return 'error'
+    }
     const { notes: remote, cursor } = (await res.json()) as { notes: Note[]; cursor: number }
 
     await db.transaction('rw', db.notes, db.meta, db.history, async () => {
@@ -64,9 +69,11 @@ async function doSync(): Promise<SyncResult> {
       await setMeta('syncCursor', cursor)
     })
     await setMeta('lastSyncAt', Date.now())
+    ui.setSyncError(null)
     ui.setSyncStatus('ok')
     return 'ok'
   } catch {
+    ui.setSyncError('Sem resposta do servidor.')
     ui.setSyncStatus('error')
     return 'error'
   }

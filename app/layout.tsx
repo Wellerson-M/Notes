@@ -1,3 +1,4 @@
+import { THEME_BOOT_SCRIPT } from '@/lib/theme'
 import type { Metadata, Viewport } from 'next'
 import { Inter, Newsreader, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
@@ -36,7 +37,8 @@ export const metadata: Metadata = {
     title: 'Notas',
   },
   icons: {
-    apple: '/icons/icon-192.png',
+    apple: '/icons/apple-touch-icon.png',
+    icon: [{ url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }],
   },
 }
 
@@ -52,9 +54,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html
       lang="pt-BR"
       className={`${inter.variable} ${newsreader.variable} ${jetbrainsMono.variable}`}
-      style={{ background: '#111210' }}
+      style={{ background: 'var(--bg-base)' }}
+      // O tema salvo é aplicado no <html> antes da hidratação (data-theme)
+      suppressHydrationWarning
     >
       <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
         <script
           dangerouslySetInnerHTML={{
             __html: `

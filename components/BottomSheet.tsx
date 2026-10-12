@@ -20,7 +20,7 @@ export default function BottomSheet({ title, children, onClose }: { title: strin
         style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(17,18,16,0.6)',
+          background: 'rgba(var(--bg-rgb), 0.6)',
           zIndex: 60,
         }}
       />

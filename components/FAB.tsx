@@ -60,7 +60,7 @@ export default function FAB() {
           borderRadius: '50%',
           background: 'var(--accent-amber)',
           border: 'none',
-          boxShadow: '0 4px 20px rgba(232, 165, 71, 0.3)',
+          boxShadow: '0 4px 20px rgba(var(--accent-rgb), 0.3)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -69,7 +69,7 @@ export default function FAB() {
         }}
         whileTap={{ scale: 0.92 }}
       >
-        <Plus size={24} color="#111210" strokeWidth={2.5} />
+        <Plus size={24} style={{ color: 'var(--on-accent)' }} strokeWidth={2.5} />
       </motion.button>
 
       <RadialMenu

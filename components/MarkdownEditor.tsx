@@ -38,7 +38,7 @@ export function renderMarkdown(text: string, onToggleTask?: (lineIndex: number) 
         onClick={(e) => { e.stopPropagation(); onToggleTask?.(i) }}
       >
         <div style={{ width: 16, height: 16, borderRadius: 4, background: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" stroke="#111210" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" style={{ stroke: 'var(--on-accent)' }} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </div>
         <span style={{ color: 'var(--text-muted)', textDecoration: 'line-through', fontSize: 15, fontFamily: 'var(--font-serif)' }}>{inlineMarkdown(taskDone[1])}</span>
       </div>
@@ -87,7 +87,7 @@ function inlineMarkdown(text: string): React.ReactNode {
     if (part.match(/^_(.+)_$/)) return <em key={i}>{part.slice(1, -1)}</em>
     if (part.match(/^`(.+)`$/)) return <code key={i} style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-elevated)', padding: '1px 5px', borderRadius: 4, fontSize: 13 }}>{part.slice(1, -1)}</code>
     const link = part.match(/^\[(.+?)\]\((.+?)\)$/)
-    if (link) return <a key={i} href={link[2]} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: 'var(--accent-amber)', textDecoration: 'underline', textDecorationColor: 'rgba(232,165,71,0.4)' }}>{link[1]}</a>
+    if (link) return <a key={i} href={link[2]} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: 'var(--accent-amber)', textDecoration: 'underline', textDecorationColor: 'rgba(var(--accent-rgb), 0.4)' }}>{link[1]}</a>
     return part
   })
 }
