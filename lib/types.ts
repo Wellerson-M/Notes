@@ -22,6 +22,12 @@ export type Note = {
    * presente — é assim que a interface sabe que ela está trancada.
    */
   cipher?: string
+  /**
+   * Data na agenda (compromisso, prazo, lembrete), no fuso do aparelho: `date` = AAAA-MM-DD e
+   * `time` = HH:MM (sem hora = o dia todo). Fica fora da cifra mesmo no Vault, mas notas do Vault
+   * nunca vão para o feed da agenda do celular.
+   */
+  schedule?: { date: string; time?: string }
 }
 
 /** Registro local: a nota mais o controle de sync (nunca vai para o servidor) */

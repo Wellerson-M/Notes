@@ -6,9 +6,10 @@
   --font-mono: var(--font-jetbrains), "Courier New", monospace;
 }
 
-/* Temas — gerado a partir das paletas; o padrão (Grafite) vale também sem data-theme */
+/* TEMAS:INICIO — gerado; cada tema vale no :root e também num elemento com data-theme (prévias) */
 :root,
-:root[data-theme="grafite"] {
+:root[data-theme="grafite"],
+[data-theme="grafite"] {
   color-scheme: dark;
   --bg-base: #111210;
   --bg-surface: #1a1b18;
@@ -24,8 +25,8 @@
   --text-disabled: #44433d;
   --accent-amber: #e8a547;
   --accent-rgb: 232, 165, 71;
-  --accent-amber-soft: rgba(var(--accent-rgb), 0.12);
-  --accent-amber-glow: rgba(var(--accent-rgb), 0.25);
+  --accent-amber-soft: rgba(232, 165, 71, 0.12);
+  --accent-amber-glow: rgba(232, 165, 71, 0.25);
   --accent-border: rgba(232, 165, 71, 0.3);
   --accent-gold: #d4af37;
   --gold-rgb: 212, 175, 55;
@@ -33,9 +34,17 @@
   --success: #6fa86f;
   --danger: #c56b5f;
   --warning: #d9a441;
+  /* personalidade */
+  --ambient: radial-gradient(120% 60% at 50% -10%, rgba(232, 165, 71, 0.07), transparent 60%);
+  --card-radius: 16px;
+  --card-shadow: none;
+  --font-title: var(--font-sans);
+  --title-style: normal;
+  --title-weight: 600;
 }
 
-:root[data-theme="meia-noite"] {
+:root[data-theme="meia-noite"],
+[data-theme="meia-noite"] {
   color-scheme: dark;
   --bg-base: #0e1118;
   --bg-surface: #161a25;
@@ -60,9 +69,17 @@
   --success: #7fbf8e;
   --danger: #e07a7a;
   --warning: #e0af68;
+  /* personalidade */
+  --ambient: radial-gradient(1.5px 1.5px at 12% 18%, rgba(255,255,255,0.55), transparent 60%), radial-gradient(1px 1px at 78% 12%, rgba(255,255,255,0.45), transparent 60%), radial-gradient(1px 1px at 46% 34%, rgba(255,255,255,0.30), transparent 60%), radial-gradient(1.5px 1.5px at 88% 46%, rgba(255,255,255,0.35), transparent 60%), radial-gradient(1px 1px at 28% 62%, rgba(255,255,255,0.25), transparent 60%), radial-gradient(1px 1px at 64% 78%, rgba(255,255,255,0.25), transparent 60%), radial-gradient(120% 50% at 50% -10%, rgba(122, 162, 247, 0.16), transparent 60%);
+  --card-radius: 18px;
+  --card-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  --font-title: var(--font-sans);
+  --title-style: normal;
+  --title-weight: 600;
 }
 
-:root[data-theme="floresta"] {
+:root[data-theme="floresta"],
+[data-theme="floresta"] {
   color-scheme: dark;
   --bg-base: #0f1310;
   --bg-surface: #171c18;
@@ -87,9 +104,17 @@
   --success: #8fbf7f;
   --danger: #d07a68;
   --warning: #d6b35a;
+  /* personalidade */
+  --ambient: radial-gradient(90% 45% at 0% 0%, rgba(143, 191, 127, 0.12), transparent 70%), radial-gradient(100% 50% at 100% 110%, rgba(201, 180, 88, 0.10), transparent 70%);
+  --card-radius: 20px;
+  --card-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  --font-title: var(--font-serif);
+  --title-style: normal;
+  --title-weight: 600;
 }
 
-:root[data-theme="vinho"] {
+:root[data-theme="vinho"],
+[data-theme="vinho"] {
   color-scheme: dark;
   --bg-base: #140f10;
   --bg-surface: #1e1617;
@@ -114,9 +139,17 @@
   --success: #86b585;
   --danger: #e86f6f;
   --warning: #e0a95f;
+  /* personalidade */
+  --ambient: radial-gradient(110% 55% at 50% -5%, rgba(224, 122, 140, 0.14), transparent 65%), radial-gradient(140% 100% at 50% 120%, rgba(0, 0, 0, 0.45), transparent 60%);
+  --card-radius: 12px;
+  --card-shadow: 0 6px 22px rgba(0, 0, 0, 0.3);
+  --font-title: var(--font-serif);
+  --title-style: italic;
+  --title-weight: 600;
 }
 
-:root[data-theme="lavanda"] {
+:root[data-theme="lavanda"],
+[data-theme="lavanda"] {
   color-scheme: dark;
   --bg-base: #121017;
   --bg-surface: #1a1721;
@@ -141,9 +174,17 @@
   --success: #86b89a;
   --danger: #e0808a;
   --warning: #e0b56a;
+  /* personalidade */
+  --ambient: radial-gradient(70% 40% at 15% 5%, rgba(179, 157, 219, 0.18), transparent 70%), radial-gradient(60% 40% at 90% 30%, rgba(224, 194, 122, 0.08), transparent 70%);
+  --card-radius: 22px;
+  --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  --font-title: var(--font-serif);
+  --title-style: normal;
+  --title-weight: 500;
 }
 
-:root[data-theme="papel"] {
+:root[data-theme="papel"],
+[data-theme="papel"] {
   color-scheme: light;
   --bg-base: #f4efe4;
   --bg-surface: #fffbf2;
@@ -168,9 +209,17 @@
   --success: #4f8a4f;
   --danger: #b5483b;
   --warning: #a77a14;
+  /* personalidade */
+  --ambient: linear-gradient(90deg, transparent 22px, rgba(181, 72, 59, 0.22) 22px, rgba(181, 72, 59, 0.22) 23.5px, transparent 23.5px), repeating-linear-gradient(180deg, transparent 0 31px, rgba(59, 110, 165, 0.10) 31px 32px);
+  --card-radius: 6px;
+  --card-shadow: 0 1px 2px rgba(60, 45, 20, 0.08), 0 4px 14px rgba(60, 45, 20, 0.06);
+  --font-title: var(--font-serif);
+  --title-style: normal;
+  --title-weight: 600;
 }
 
-:root[data-theme="neblina"] {
+:root[data-theme="neblina"],
+[data-theme="neblina"] {
   color-scheme: light;
   --bg-base: #eef1f4;
   --bg-surface: #ffffff;
@@ -195,8 +244,15 @@
   --success: #3d8a5a;
   --danger: #b84a4a;
   --warning: #a6741a;
+  /* personalidade */
+  --ambient: linear-gradient(180deg, rgba(59, 110, 165, 0.07), transparent 40%), radial-gradient(80% 40% at 80% 100%, rgba(255, 255, 255, 0.9), transparent 70%);
+  --card-radius: 14px;
+  --card-shadow: 0 2px 12px rgba(31, 39, 51, 0.07);
+  --font-title: var(--font-sans);
+  --title-style: normal;
+  --title-weight: 600;
 }
-
+/* TEMAS:FIM */
 *,
 *::before,
 *::after {
@@ -213,6 +269,18 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
+}
+
+body {
+  background-image: var(--ambient);
+  background-attachment: fixed;
+}
+
+/* Títulos com a cara do tema (sans no Grafite, serifa no Papel...) */
+.font-title {
+  font-family: var(--font-title);
+  font-style: var(--title-style);
+  font-weight: var(--title-weight);
 }
 
 /* Noise texture overlay on cards */

@@ -174,9 +174,23 @@ Por isso a rota da nota é `/note?id=` (página estática) e não `/note/[id]`: 
 - **Antes de recarregar**, dispara o evento `grafite:flush` para o editor gravar o que estiver pendente.
 - **Service worker:** é registrado como `/sw.js?v=<versão>`, então cada deploy instala um novo e apaga os caches antigos.
 
+## Agenda (`lib/schedule.ts`)
+
+Uma nota pode ter `schedule: { date: 'AAAA-MM-DD', time?: 'HH:MM' }`, sempre no horário local do aparelho (sem fuso: "dia 20 às 9h" é o que a pessoa disse). Ela aparece na tela **Agenda** (`app/journal`: Próximos, Ficou para trás, calendário) e no filtro "Agendadas" da timeline. A data fica fora da cifra mesmo no Vault, mas notas do Vault nunca entram na agenda.
+
+**Agenda do celular**, por dois caminhos:
+- **Por nota:** "Agenda do celular" gera um `.ics` e abre o compartilhar do sistema (a Agenda Samsung importa). É na hora, mas é uma cópia: editar a nota não atualiza o evento.
+- **Assinatura:** `/api/agenda?k=<chave>` é um feed iCalendar com todas as notas datadas fora do Vault. A chave é `HMAC(APP_PASSWORD, "grafite-calendar-v1")`, porque apps de agenda não mandam cookie (trocar a senha invalida o link). Ajustes → "Agenda do celular" abre o Google Agenda para assinar, e a Agenda Samsung mostra os calendários da conta Google. O Google atualiza assinaturas a cada algumas horas.
+
+## Modelos e uso da IA (`lib/ai-models.ts`, `lib/usage.ts`)
+
+Cada pedido leva a preferência do aparelho (`auto`, `fast`, `smart`, `pro`; Ajustes → IA). No **Automático**, o Rápido (Flash-Lite) atende conversa, sugestões e transformações curtas; o Inteligente (Flash) fica com foto, "expandir", retrospectiva e textos com mais de 8 mil caracteres. Sempre há um reserva (o outro nível) para 429, 500/503 ou mais de 20s.
+
+Toda chamada ao Gemini soma um contador na coleção `ai_usage` (um documento por dia da cota e modelo: pedidos, limites atingidos, erros e tokens). O dia segue o horário do Pacífico, como a cota do Google. `GET /api/ai` devolve o uso de hoje e da semana. O Google não informa quanto resta da cota, então os limites diários exibidos são estimativas; o dado confiável é o "limite atingido" registrado.
+
 ## Temas (`lib/theme.ts`)
 
-Sete temas, cada um é um bloco `:root[data-theme="<id>"]` em `globals.css` que redefine os tokens (`--bg-*`, `--text-*`, `--accent-amber`, `--on-accent`...). Transparências usam as versões RGB (`rgba(var(--accent-rgb), 0.3)`, `--gold-rgb`, `--bg-rgb`), então **nunca escreva cor fixa num componente**. A escolha fica no `localStorage` do aparelho e é aplicada por um script no `<head>` antes da primeira pintura, junto com a `theme-color` da barra do sistema. O canvas das partículas lê `--accent-rgb` com `getComputedStyle`.
+Sete temas, cada um é um bloco `:root[data-theme="<id>"], [data-theme="<id>"]` em `globals.css` (gerado entre `TEMAS:INICIO` e `TEMAS:FIM`) que redefine os tokens (`--bg-*`, `--text-*`, `--accent-amber`, `--on-accent`...) e a personalidade: `--ambient` (fundo: estrelas, pauta de caderno, névoa...), `--card-radius`, `--card-shadow` e a fonte dos títulos (`.font-title`). Como o seletor também vale num elemento, as miniaturas do seletor usam `data-theme` e mostram o tema de verdade. Transparências usam as versões RGB (`rgba(var(--accent-rgb), 0.3)`, `--gold-rgb`, `--bg-rgb`), então **nunca escreva cor fixa num componente**. A escolha fica no `localStorage` do aparelho e é aplicada por um script no `<head>` antes da primeira pintura, junto com a `theme-color` da barra do sistema. O canvas das partículas lê `--accent-rgb` com `getComputedStyle`.
 
 ## Layout celular × PC
 

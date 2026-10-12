@@ -123,11 +123,17 @@ async function run(profile) {
   ok(`${P}: OCR lê a foto`, /comprar p[aã]o/i.test(ocrText) || /Limite gratuito/.test(ocrText), ocrText.slice(0, 80).replace(/\n/g, ' '))
   await shot('05b-ocr')
   await page.getByText('Descartar').click().catch(() => page.getByText('fechar').click()); await W(500)
+
+  // agendar para amanhã pelo editor
+  await page.getByRole('button', { name: 'agendar' }).click(); await W(600)
+  await page.getByRole('button', { name: 'Amanhã', exact: true }).click(); await W(200)
+  await page.getByRole('button', { name: 'Agendar', exact: true }).click(); await W(1500)
+  ok(`${P}: nota agendada mostra a data`, await page.getByText('amanhã').count())
   await page.getByRole('button', { name: 'Voltar' }).click(); await W(1500)
 
-  // diário + resumo da semana
+  // agenda + resumo da semana
   await page.goto(BASE + '/journal'); await W(2000)
-  ok(`${P}: diário mostra a nota de hoje`, await page.getByText(title).count())
+  ok(`${P}: agenda mostra a nota em Próximos`, await page.getByText('Próximos').count() && await page.getByText(title).count())
   await page.getByText('Resumo da semana').click()
   await page.getByText(/Salvar como nota|Limite gratuito|não conseguiu|Nenhuma nota/).first().waitFor({ timeout: 40000 }).catch(() => {})
   ok(`${P}: resumo da semana responde`, await page.getByText(/Salvar como nota|Limite gratuito|não conseguiu/).count())

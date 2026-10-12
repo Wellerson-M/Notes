@@ -1,12 +1,12 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BookOpen, Clock, Lock, Settings } from 'lucide-react'
+import { CalendarDays, Clock, Lock, Settings } from 'lucide-react'
 import { useUIStore } from '@/store/ui'
 
 const tabs = [
   { id: 'timeline', href: '/', label: 'Notas', Icon: Clock },
-  { id: 'journal', href: '/journal', label: 'Diário', Icon: BookOpen },
+  { id: 'journal', href: '/journal', label: 'Agenda', Icon: CalendarDays },
   { id: 'vault', href: '/vault', label: 'Vault', Icon: Lock },
   { id: 'settings', href: '/settings', label: 'Config', Icon: Settings },
 ] as const

@@ -136,7 +136,7 @@ export default function VaultPage() {
   }
 
   return (
-    <main style={{ background: 'var(--bg-base)', minHeight: '100dvh', paddingBottom: 88 }}>
+    <main style={{ minHeight: '100dvh', paddingBottom: 88 }}>
       {/* Header */}
       <div
         className="sticky top-0 z-40 flex items-center justify-between px-5 pt-safe"

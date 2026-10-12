@@ -4,6 +4,7 @@ import AmberCaret from './AmberCaret'
 import FloatingToolbar from './FloatingToolbar'
 import WikilinkAutocomplete from './WikilinkAutocomplete'
 import WikiLink from './WikiLink'
+import { parseTaskLine } from '@/lib/notes'
 
 interface Props {
   value: string
@@ -28,31 +29,37 @@ export function renderMarkdown(text: string, onToggleTask?: (lineIndex: number) 
     // HR
     if (line === '---') return <div key={i} className="prose-hr" />
 
-    // Task checkbox
-    const taskDone = line.match(/^- \[x\] (.+)/i)
-    if (taskDone) return (
+    // Tarefa: a linha inteira (com folga em cima e embaixo) marca/desmarca — tocar perto da
+    // caixinha nunca abre o teclado
+    const task = parseTaskLine(line)
+    if (task) return (
       <div
         key={i}
-        className="flex items-center gap-2 my-1"
-        style={{ cursor: 'pointer' }}
+        role="checkbox"
+        aria-checked={task.done}
+        className="flex items-center gap-3"
+        style={{ cursor: 'pointer', padding: '7px 0', margin: '-3px 0', WebkitTapHighlightColor: 'transparent' }}
         onClick={(e) => { e.stopPropagation(); onToggleTask?.(i) }}
       >
-        <div style={{ width: 16, height: 16, borderRadius: 4, background: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" style={{ stroke: 'var(--on-accent)' }} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        <div
+          style={{
+            width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: task.done ? 'var(--success)' : 'transparent',
+            border: task.done ? 'none' : '1.5px solid var(--border-strong)',
+            transition: 'background 150ms, border-color 150ms',
+          }}
+        >
+          {task.done && (
+            <svg width="10" height="8" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" style={{ stroke: 'var(--on-accent)' }} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          )}
         </div>
-        <span style={{ color: 'var(--text-muted)', textDecoration: 'line-through', fontSize: 15, fontFamily: 'var(--font-serif)' }}>{inlineMarkdown(taskDone[1])}</span>
-      </div>
-    )
-    const taskOpen = line.match(/^- \[ \] (.+)/)
-    if (taskOpen) return (
-      <div
-        key={i}
-        className="flex items-center gap-2 my-1"
-        style={{ cursor: 'pointer' }}
-        onClick={(e) => { e.stopPropagation(); onToggleTask?.(i) }}
-      >
-        <div style={{ width: 16, height: 16, borderRadius: 4, border: '1.5px solid var(--border-strong)', flexShrink: 0 }} />
-        <span style={{ color: 'var(--text-secondary)', fontSize: 15, fontFamily: 'var(--font-serif)' }}>{inlineMarkdown(taskOpen[1])}</span>
+        <span style={{
+          color: task.done ? 'var(--text-muted)' : 'var(--text-secondary)',
+          textDecoration: task.done ? 'line-through' : 'none',
+          fontSize: 15, fontFamily: 'var(--font-serif)',
+        }}>
+          {inlineMarkdown(task.text)}
+        </span>
       </div>
     )
 
@@ -102,12 +109,7 @@ export default function MarkdownEditor({ value, onChange, placeholder = 'Escreva
 
   const handleToggleTask = useCallback((lineIndex: number) => {
     const lines = value.split('\n')
-    const line = lines[lineIndex]
-    if (line.match(/^- \[ \] /)) {
-      lines[lineIndex] = line.replace(/^- \[ \] /, '- [x] ')
-    } else if (line.match(/^- \[x\] /i)) {
-      lines[lineIndex] = line.replace(/^- \[x\] /i, '- [ ] ')
-    }
+    lines[lineIndex] = lines[lineIndex].replace(/^(\s*[-*]\s+\[)([ xX])\]/, (_, open: string, mark: string) => `${open}${mark === ' ' ? 'x' : ' '}]`)
     onChange(lines.join('\n'))
   }, [value, onChange])
 

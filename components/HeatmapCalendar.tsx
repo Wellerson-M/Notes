@@ -7,9 +7,11 @@ interface Props {
   month: number // 0-indexed
   selectedDay?: number
   onSelectDay?: (day: number) => void
+  /** Dias com algo na agenda (ganham um pontinho) */
+  scheduledDays?: Set<number>
 }
 
-export default function HeatmapCalendar({ notes, year, month, selectedDay, onSelectDay }: Props) {
+export default function HeatmapCalendar({ notes, year, month, selectedDay, onSelectDay, scheduledDays }: Props) {
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   const firstDayOfWeek = new Date(year, month, 1).getDay()
 
@@ -83,8 +85,10 @@ export default function HeatmapCalendar({ notes, year, month, selectedDay, onSel
               background: day ? getCellColor(getIntensity(day)) : 'transparent',
               cursor: day ? 'pointer' : 'default',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
+              gap: 2,
               fontSize: 11,
               fontWeight: day && selectedDay === day ? 700 : 400,
               color: day
@@ -98,6 +102,9 @@ export default function HeatmapCalendar({ notes, year, month, selectedDay, onSel
             }}
           >
             {day || ''}
+            {day && scheduledDays?.has(day) && (
+              <span aria-label="tem algo na agenda" style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--accent-gold)' }} />
+            )}
           </button>
         ))}
       </div>

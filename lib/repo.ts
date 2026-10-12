@@ -46,8 +46,10 @@ async function seal(plain: LocalNote): Promise<LocalNote> {
 
 async function allNotes(): Promise<Note[]> {
   const rows = await db.notes.toArray()
-  const visible = rows.filter((n) => !n.deleted)
-  return (await Promise.all(visible.map(open))).map(strip)
+  const visible = (await Promise.all(rows.filter((n) => !n.deleted).map(open))).map(strip)
+  // Ligações [[Título]] calculadas na leitura: uma nota criada (ou renomeada) depois de quem a
+  // cita já aparece ligada, sem precisar regravar a outra
+  return visible.map((n) => (n.content.includes('[[') ? { ...n, linkedNoteIds: extractLinkedIds(n.content, visible) } : n))
 }
 
 /** Campos derivados do conteúdo — recalculados a cada gravação */

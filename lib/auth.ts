@@ -38,3 +38,18 @@ export async function isAuthenticated(): Promise<boolean> {
 }
 
 export const unauthorized = () => Response.json({ error: 'não autenticado' }, { status: 401 })
+
+/**
+ * Chave do link da agenda (feed .ics). Apps de agenda não mandam cookie, então o link leva uma
+ * chave derivada da APP_PASSWORD: trocar a senha invalida o link antigo.
+ */
+export function calendarToken(): string | null {
+  const password = process.env.APP_PASSWORD
+  if (!password) return null
+  return createHmac('sha256', password).update('grafite-calendar-v1').digest('hex').slice(0, 32)
+}
+
+export function checkCalendarToken(value: string | null): boolean {
+  const token = calendarToken()
+  return !!token && !!value && safeEqual(value, token)
+}

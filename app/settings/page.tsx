@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Cloud, Palette, Sparkles, Lock, Info, ChevronRight } from 'lucide-react'
+import { Cloud, Palette, Sparkles, Lock, Info, ChevronRight, CalendarDays } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import SyncIndicator from '@/components/SyncIndicator'
 import { useUIStore } from '@/store/ui'
@@ -15,11 +15,13 @@ import type { Note } from '@/lib/types'
 import { APP_VERSION, APP_BUILT_AT, applyUpdate, checkForUpdate } from '@/lib/updates'
 import { makeZip } from '@/lib/zip'
 import ThemePicker from '@/components/ThemePicker'
+import { AIUsage, ModelPicker } from '@/components/AISettings'
+import CalendarLink from '@/components/CalendarLink'
 import { useRouter } from 'next/navigation'
 
 function Section({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
   return (
-    <div className="noise-card rounded-2xl overflow-hidden" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+    <div className="noise-card overflow-hidden" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'calc(var(--card-radius) + 2px)', boxShadow: 'var(--card-shadow)' }}>
       <div
         className="flex items-center gap-2 px-5 py-3"
         style={{ borderBottom: '1px solid var(--border-subtle)' }}
@@ -260,7 +262,7 @@ export default function SettingsPage() {
   const total = notes?.length ?? 0
 
   return (
-    <main style={{ background: 'var(--bg-base)', minHeight: '100dvh', paddingBottom: 88 }}>
+    <main style={{ minHeight: '100dvh', paddingBottom: 88 }}>
       {/* Header */}
       <div
         className="sticky top-0 z-40 flex items-center px-5 pt-safe"
@@ -384,6 +386,8 @@ export default function SettingsPage() {
         {/* 3. IA */}
         <Section title="Inteligência Artificial" icon={Sparkles}>
           <Row label="Provedor" value="Google Gemini (grátis)" />
+          <ModelPicker />
+          <AIUsage connected={!!connected} />
           <Row
             label="Status"
             value={!server ? '...' : !server.ai ? 'falta a chave' : connected ? 'pronta' : 'entre com a senha'}
@@ -397,6 +401,10 @@ export default function SettingsPage() {
         </Section>
 
         {/* 4. Vault e Privacidade */}
+        <Section title="Agenda do celular" icon={CalendarDays}>
+          <CalendarLink connected={!!connected} />
+        </Section>
+
         <Section title="Vault e Privacidade" icon={Lock}>
           <Row label="Vault" value={vaultLocked ? 'trancado' : 'aberto'} onClick={() => router.push('/vault')} />
           <Row label="Esquecer histórico de busca" danger onClick={() => { clearRecentSearches(); showToast('Histórico apagado') }} />

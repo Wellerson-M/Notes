@@ -161,7 +161,7 @@ export default function SearchPage() {
   )
 
   return (
-    <main style={{ background: 'var(--bg-base)', minHeight: '100dvh' }}>
+    <main style={{ minHeight: '100dvh' }}>
       {/* Search input */}
       <div
         className="sticky top-0 z-40 px-4 pt-safe"

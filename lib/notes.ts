@@ -75,3 +75,24 @@ export function extractLinkedIds(content: string, notes: Note[]): string[] | und
     .map((n) => n.id)
   return ids.length ? [...new Set(ids)] : undefined
 }
+
+const TASK_LINE = /^(\s*[-*]\s+\[)([ xX])(\]\s+.+)$/
+
+/** Marca/desmarca a tarefa número `index` (na ordem do texto) e devolve o conteúdo novo */
+export function toggleTaskAt(content: string, index: number): string {
+  let k = -1
+  return content
+    .split('\n')
+    .map((line) => {
+      const m = line.match(TASK_LINE)
+      if (!m || ++k !== index) return line
+      return m[1] + (m[2] === ' ' ? 'x' : ' ') + m[3]
+    })
+    .join('\n')
+}
+
+/** Linha de tarefa markdown? Devolve feita/texto (aceita "-" ou "*", recuo e [X]) */
+export function parseTaskLine(line: string): { done: boolean; text: string } | null {
+  const m = line.match(/^\s*[-*]\s+\[([ xX])\]\s?(.*)$/)
+  return m ? { done: m[1] !== ' ', text: m[2] } : null
+}
