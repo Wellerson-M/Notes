@@ -1,6 +1,5 @@
 'use client'
-import { useState } from 'react'
-import { motion, AnimatePresence, useDragControls } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
 import type { Note } from '@/lib/types'
 import { useNotes } from '@/lib/repo'
@@ -42,8 +41,6 @@ export default function NeighborhoodMap({ noteId, open, onClose }: Props) {
   const notes = useNotes() ?? []
   const currentNote = notes.find(n => n.id === noteId)
   const neighbors = getNeighbors(notes, noteId)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
-  const dragControls = useDragControls()
 
   const CENTER = { x: 160, y: 160 }
   const RADIUS = 110

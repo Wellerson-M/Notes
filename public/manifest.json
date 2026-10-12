@@ -21,6 +21,35 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["productivity", "utilities"],
-  "lang": "pt-BR"
+  "categories": [
+    "productivity",
+    "utilities"
+  ],
+  "lang": "pt-BR",
+  "share_target": {
+    "action": "/note",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "shortcuts": [
+    {
+      "name": "Nova nota",
+      "short_name": "Nota",
+      "url": "/note?mode=text"
+    },
+    {
+      "name": "Ditar nota",
+      "short_name": "Ditar",
+      "url": "/note?mode=audio"
+    },
+    {
+      "name": "Assistente",
+      "short_name": "Assistente",
+      "url": "/assistant"
+    }
+  ]
 }

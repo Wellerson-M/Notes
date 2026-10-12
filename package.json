@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "e2e": "node scripts/e2e.cjs"
+    "e2e": "node scripts/e2e.cjs",
+    "e2e:gestos": "node scripts/e2e-gestos.cjs"
   },
   "dependencies": {
     "@google/genai": "^2.28.0",

@@ -12,7 +12,7 @@ import { syncNow } from '@/lib/sync'
 import { useUIStore } from '@/store/ui'
 import EmptyState from '@/components/EmptyState'
 
-const FILTERS = ['Tudo', 'Hoje', 'Esta semana', 'Com áudio', 'Com foto', 'Tarefas', 'Fixadas', 'Vault']
+const FILTERS = ['Tudo', 'Hoje', 'Esta semana', 'Tarefas', 'Fixadas', 'Vault']
 
 function filterNotes(notes: Note[], filter: string) {
   const now = new Date()
@@ -20,17 +20,13 @@ function filterNotes(notes: Note[], filter: string) {
     case 'Hoje':
       return notes.filter((n) => {
         const d = new Date(n.createdAt)
-        return d.toDateString() === now.toDateString()
+        return !n.inVault && d.toDateString() === now.toDateString()
       })
     case 'Esta semana':
       return notes.filter((n) => {
         const d = new Date(n.createdAt)
-        return (now.getTime() - d.getTime()) / 86400000 <= 7
+        return !n.inVault && (now.getTime() - d.getTime()) / 86400000 <= 7
       })
-    case 'Com áudio':
-      return notes.filter((n) => !!n.attachments.audio)
-    case 'Com foto':
-      return notes.filter((n) => (n.attachments.photos?.length ?? 0) > 0)
     case 'Tarefas':
       return notes.filter((n) => !n.inVault && (n.tasks?.length ?? 0) > 0)
     case 'Fixadas':
@@ -60,6 +56,8 @@ export default function TimelinePage() {
   useEffect(() => {
     const flag = sessionStorage.getItem('new-note-id')
     if (flag) {
+      // sessionStorage só existe no cliente: lido depois da montagem para não divergir do SSR
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setNewNoteId(flag)
       sessionStorage.removeItem('new-note-id')
       setTimeout(() => setNewNoteId(null), 1000)

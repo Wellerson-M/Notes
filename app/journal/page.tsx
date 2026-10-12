@@ -1,11 +1,17 @@
 'use client'
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { AnimatePresence } from 'framer-motion'
+import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import HeatmapCalendar from '@/components/HeatmapCalendar'
 import type { Note } from '@/lib/types'
 import { getPreview } from '@/lib/notes'
-import { useNotes } from '@/lib/repo'
+import { notesRepo, useNotes } from '@/lib/repo'
+import { ai, AIError } from '@/lib/ai'
+import BottomSheet from '@/components/BottomSheet'
+import { AIThinking, AIError as AIErrorMessage } from '@/components/AISheets'
+import { renderMarkdown } from '@/components/MarkdownEditor'
 import Link from 'next/link'
 import EmptyState from '@/components/EmptyState'
 import { noteHref } from '@/lib/routes'
@@ -26,7 +32,13 @@ function groupByDay(notes: Note[], year: number, month: number) {
   return grouped
 }
 
+type Review = { loading: boolean; text?: string; error?: string; period: string }
+
+const fmt = (d: Date) => d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })
+
 export default function JournalPage() {
+  const router = useRouter()
+  const [review, setReview] = useState<Review | null>(null)
   const [today] = useState(() => new Date())
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth())
@@ -36,6 +48,27 @@ export default function JournalPage() {
   const notes = (useNotes() ?? []).filter((n) => !n.inVault)
   const grouped = groupByDay(notes, year, month)
   const daysWithNotes = Object.keys(grouped).map(Number).sort((a, b) => b - a)
+
+  /** Retrospectiva dos últimos 7 dias pela IA */
+  const runReview = async () => {
+    const to = new Date()
+    const from = new Date(to.getTime() - 7 * 86400000)
+    const period = `${fmt(from)} a ${fmt(to)}`
+    setReview({ loading: true, period })
+    try {
+      const { text, count } = await ai.review(notes, from, to, period)
+      setReview(count ? { loading: false, text, period } : { loading: false, error: 'Nenhuma nota nos últimos 7 dias.', period })
+    } catch (e) {
+      setReview({ loading: false, error: e instanceof AIError ? e.message : 'A IA não conseguiu responder agora.', period })
+    }
+  }
+
+  const saveReview = async () => {
+    if (!review?.text) return
+    const note = await notesRepo.create({ title: `Semana de ${review.period}`, content: review.text, tags: ['retrospectiva'] })
+    setReview(null)
+    router.push(noteHref(note.id))
+  }
 
   const prevMonth = () => {
     if (month === 0) { setMonth(11); setYear(y => y - 1) }
@@ -76,6 +109,17 @@ export default function JournalPage() {
           style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}
         >
           <ChevronRight size={18} />
+        </button>
+      </div>
+
+      {/* Retrospectiva */}
+      <div className="px-4 pt-4">
+        <button
+          onClick={runReview}
+          className="touch-feedback flex items-center justify-center gap-2 w-full rounded-xl py-3 font-sans"
+          style={{ background: 'var(--accent-amber-soft)', border: '1px solid rgba(232,165,71,0.3)', color: 'var(--accent-amber)', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
+        >
+          <Sparkles size={15} /> Resumo da semana
         </button>
       </div>
 
@@ -151,6 +195,40 @@ export default function JournalPage() {
           })
         )}
       </div>
+
+      <AnimatePresence>
+        {review && (
+          <BottomSheet title={`Semana · ${review.period}`} onClose={() => setReview(null)}>
+            {review.loading ? (
+              <AIThinking action="review" />
+            ) : review.error ? (
+              <AIErrorMessage message={review.error} />
+            ) : (
+              <>
+                <div className="px-5 py-4 font-serif" style={{ fontSize: 15, lineHeight: '26px', color: 'var(--text-secondary)' }}>
+                  {renderMarkdown(review.text ?? '')}
+                </div>
+                <div className="flex gap-2 px-4 pb-4">
+                  <button
+                    onClick={() => setReview(null)}
+                    className="touch-feedback flex-1 rounded-xl py-3 font-sans"
+                    style={{ fontSize: 14, fontWeight: 600, cursor: 'pointer', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
+                  >
+                    Fechar
+                  </button>
+                  <button
+                    onClick={saveReview}
+                    className="touch-feedback flex-1 rounded-xl py-3 font-sans"
+                    style={{ fontSize: 14, fontWeight: 600, cursor: 'pointer', background: 'var(--accent-amber)', color: '#111210', border: 'none' }}
+                  >
+                    Salvar como nota
+                  </button>
+                </div>
+              </>
+            )}
+          </BottomSheet>
+        )}
+      </AnimatePresence>
 
       <BottomNav />
     </main>

@@ -2,6 +2,7 @@
 import { db, getMeta, setMeta } from './db'
 import type { LocalNote, Note } from './types'
 import { useUIStore } from '@/store/ui'
+import { snapshot, snapshotIfDue } from './history'
 
 /**
  * Sync local-first com o Atlas, regra "última escrita vence" por nota.
@@ -43,17 +44,22 @@ async function doSync(): Promise<SyncResult> {
     if (!res.ok) throw new Error(`sync ${res.status}`)
     const { notes: remote, cursor } = (await res.json()) as { notes: Note[]; cursor: number }
 
-    await db.transaction('rw', db.notes, db.meta, async () => {
+    await db.transaction('rw', db.notes, db.meta, db.history, async () => {
+      // Primeiro aplica o que veio do servidor, enquanto as notas locais ainda estão marcadas
+      // como sujas — é isso que identifica uma edição local que perdeu o conflito
+      for (const r of remote) {
+        const local = await db.notes.get(r.id)
+        if (!local || (!local.dirty && r.updatedAt !== local.updatedAt) || r.updatedAt > local.updatedAt) {
+          // Edição local não enviada perdendo para outro aparelho: guarda para dar para recuperar
+          if (local?.dirty) await snapshot(local, 'conflict')
+          else if (local) await snapshotIfDue(local, r as LocalNote)
+          await db.notes.put({ ...r, dirty: 0 } as LocalNote)
+        }
+      }
       // Limpa a marca de sujo só se a nota não mudou enquanto a requisição estava no ar
       for (const sent of dirty) {
         const now = await db.notes.get(sent.id)
         if (now && now.updatedAt === sent.updatedAt) await db.notes.update(sent.id, { dirty: 0 })
-      }
-      for (const r of remote) {
-        const local = await db.notes.get(r.id)
-        if (!local || (!local.dirty && r.updatedAt !== local.updatedAt) || r.updatedAt > local.updatedAt) {
-          await db.notes.put({ ...r, dirty: 0 } as LocalNote)
-        }
       }
       await setMeta('syncCursor', cursor)
     })

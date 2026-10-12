@@ -18,7 +18,8 @@ roda só no servidor em `/api/ai`.
 - Telas nunca falam com o Dexie direto: use `notesRepo` e `useNotes`/`useNote` de `lib/repo.ts`.
 - Exclusão é lógica (`deleted: true`), senão o sync não propaga para outros aparelhos.
 - Links de nota: sempre `noteHref(id)` / `newNoteHref(mode)` de `lib/routes.ts` (rota `/note?id=`, estática por causa do offline).
-- Notas com `inVault: true` nunca vão para a IA (`buildDigests` em `lib/ai.ts` filtra).
+- Notas com `inVault: true` são gravadas cifradas (`cipher`, ver `lib/vault.ts`) e nunca vão para a IA (`buildDigests` filtra; o editor bloqueia).
+- Dentro de `db.transaction` do Dexie, não espere promessas de fora (Web Crypto, fetch): a transação fecha sozinha.
 - Elemento `position: fixed` novo precisa da classe `.app-bar` ou `.app-fab` (coluna central no PC).
 - Página nova: adicionar em `PAGES` de `public/sw.js` para abrir offline.
 - Cores só via variáveis CSS de `app/globals.css`; animações ≤ 400ms; respeitar "Reduzir movimento" (ver `docs/DESIGN.md`).
@@ -29,7 +30,7 @@ roda só no servidor em `/api/ai`.
 ```bash
 npm run dev       # http://localhost:3000 (service worker desligado no dev)
 npm run build     # precisa passar antes de commit
-npm run lint      # 1 erro pré-existente conhecido em app/page.tsx
+npm run lint      # sem erros (2 avisos de <img> no NoteCard)
 npm run e2e       # teste ponta a ponta; ver docs/TESTES.md
 ```
 

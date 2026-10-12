@@ -2,11 +2,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MoreVertical, Pin, Lock, Unlock, FileText, Trash2, BookOpen, GitFork } from 'lucide-react'
+import { MoreVertical, Pin, Lock, Unlock, FileText, Trash2, BookOpen, GitFork, History } from 'lucide-react'
 import type { Note } from '@/lib/types'
 import type { Suggestions, TransformAction } from '@/lib/ai-types'
-import { notesRepo, removeWithUndo, useNotes } from '@/lib/repo'
+import { notesRepo, removeWithUndo, useNotes, VaultLockedError } from '@/lib/repo'
 import { ai, AIError } from '@/lib/ai'
+import { compressImage } from '@/lib/image'
+import * as vault from '@/lib/vault'
 import { useUIStore } from '@/store/ui'
 import { FLUSH_EVENT } from '@/lib/updates'
 import MarkdownEditor from './MarkdownEditor'
@@ -17,6 +19,7 @@ import BacklinksSection from './BacklinksSection'
 import NeighborhoodMap from './NeighborhoodMap'
 import SwipeBackWrapper from './SwipeBackWrapper'
 import { AIResultSheet, SuggestionsSheet } from './AISheets'
+import VersionsSheet from './VersionsSheet'
 
 const SAVE_DEBOUNCE_MS = 600
 
@@ -44,21 +47,26 @@ function SavingIndicator({ state }: { state: 'idle' | 'saving' | 'saved' }) {
 }
 
 type Draft = { title: string; content: string; tags: string[] }
+export type NoteDraft = { title: string; content: string }
 
 interface Props {
   /** Nota existente, ou null para uma nota nova (criada só quando algo for escrito) */
   note: Note | null
   mode?: string
+  /** Nota nova que já começa preenchida (ex.: conteúdo compartilhado de outro app) */
+  initial?: NoteDraft
+  /** Nota nova criada direto no Vault */
+  inVault?: boolean
 }
 
-export default function NoteEditor({ note, mode = 'text' }: Props) {
+export default function NoteEditor({ note, mode = 'text', initial, inVault: newInVault = false }: Props) {
   const router = useRouter()
-  const { savingState, setSavingState, showToast } = useUIStore()
+  const { savingState, setSavingState, showToast, vaultLocked } = useUIStore()
   const allNotes = useNotes() ?? []
   const isNew = !note
 
-  const initialContent = note?.content ?? INITIAL_CONTENT[mode] ?? ''
-  const [title, setTitle] = useState(note?.title ?? '')
+  const initialContent = note?.content ?? initial?.content ?? INITIAL_CONTENT[mode] ?? ''
+  const [title, setTitle] = useState(note?.title ?? initial?.title ?? '')
   const [content, setContent] = useState(initialContent)
   const [tags, setTags] = useState<string[]>(note?.tags ?? [])
   const [newTag, setNewTag] = useState('')
@@ -70,6 +78,7 @@ export default function NoteEditor({ note, mode = 'text' }: Props) {
   const [aiResult, setAIResult] = useState<{ action: string; loading: boolean; text?: string; error?: string } | null>(null)
   const [openedAt] = useState(() => new Date().toISOString())
   const [suggestions, setSuggestions] = useState<{ loading: boolean; data?: Suggestions; error?: string } | null>(null)
+  const [versionsOpen, setVersionsOpen] = useState(false)
 
   // Refs guardam o estado mais recente para o salvamento debounced e o flush ao sair
   const noteIdRef = useRef<string | null>(note?.id ?? null)
@@ -79,6 +88,11 @@ export default function NoteEditor({ note, mode = 'text' }: Props) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savingRef = useRef<Promise<void>>(Promise.resolve())
   const current = allNotes.find((n) => n.id === noteId) ?? note ?? undefined
+  const inVault = current?.inVault ?? newInVault
+
+  const vaultBlocked = useCallback(() => {
+    showToast('O Vault trancou — abra de novo para continuar', { actionLabel: 'abrir', onAction: () => router.push('/vault') })
+  }, [router, showToast])
 
   const flush = useCallback(async () => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
@@ -93,12 +107,16 @@ export default function NoteEditor({ note, mode = 'text' }: Props) {
       } else {
         // Nota nova só nasce quando tiver algo além do conteúdo inicial do modo
         if (!data.title && c.trim() === (INITIAL_CONTENT[mode] ?? '').trim() && !tg.length) return
-        noteIdRef.current = (await notesRepo.create(data)).id
+        noteIdRef.current = (await notesRepo.create({ ...data, inVault: newInVault })).id
         setNoteId(noteIdRef.current)
       }
+    }).catch((e) => {
+      if (!(e instanceof VaultLockedError)) throw e
+      dirtyRef.current = true // o texto continua na tela; grava quando o Vault abrir
+      vaultBlocked()
     })
     return savingRef.current
-  }, [mode])
+  }, [mode, newInVault, vaultBlocked])
 
   const scheduleSave = useCallback((patch: Partial<Draft>) => {
     draftRef.current = { ...draftRef.current, ...patch }
@@ -127,6 +145,19 @@ export default function NoteEditor({ note, mode = 'text' }: Props) {
     }
   }, [flush, setSavingState])
 
+  // Conteúdo compartilhado de outro app vira nota na hora, sem precisar digitar nada
+  const sharedSaved = useRef(false)
+  useEffect(() => {
+    if (!initial || sharedSaved.current) return
+    sharedSaved.current = true
+    scheduleSave({ title: initial.title, content: initial.content })
+  }, [initial, scheduleSave])
+
+  // Vault trancou (auto-lock ou outro botão) com uma nota do Vault aberta: sai da tela
+  useEffect(() => {
+    if (inVault && vaultLocked) router.replace('/vault')
+  }, [inVault, vaultLocked, router])
+
   const handleContentChange = (val: string) => { setContent(val); scheduleSave({ content: val }) }
   const handleTitleChange = (val: string) => { setTitle(val); scheduleSave({ title: val }) }
   const updateTags = (next: string[]) => { setTags(next); scheduleSave({ tags: next }) }
@@ -149,7 +180,14 @@ export default function NoteEditor({ note, mode = 'text' }: Props) {
   }
 
   // ── IA ──────────────────────────────────────────────────────────────
+  /** O Vault nunca sai do aparelho — nem para a IA */
+  const aiAllowed = () => {
+    if (inVault) showToast('A IA não é usada em notas do Vault')
+    return !inVault
+  }
+
   const runTransform = async (action: TransformAction) => {
+    if (!aiAllowed()) return
     if (!content.trim()) { showToast('Escreva algo antes de usar a IA'); return }
     setAIResult({ action, loading: true })
     try {
@@ -161,6 +199,7 @@ export default function NoteEditor({ note, mode = 'text' }: Props) {
   }
 
   const runSuggest = async () => {
+    if (!aiAllowed()) return
     if (!content.trim() && !title.trim()) { showToast('Escreva algo antes de pedir sugestões'); return }
     setSuggestions({ loading: true })
     try {
@@ -168,6 +207,17 @@ export default function NoteEditor({ note, mode = 'text' }: Props) {
       setSuggestions({ loading: false, data })
     } catch (e) {
       setSuggestions({ loading: false, error: e instanceof AIError ? e.message : 'A IA não conseguiu responder agora.' })
+    }
+  }
+
+  const runOCR = async (file: File) => {
+    if (!aiAllowed()) return
+    setAIResult({ action: 'ocr', loading: true })
+    try {
+      const text = await ai.ocr(await compressImage(file))
+      setAIResult({ action: 'ocr', loading: false, text })
+    } catch (e) {
+      setAIResult({ action: 'ocr', loading: false, error: e instanceof AIError ? e.message : 'Não deu para ler essa imagem.' })
     }
   }
 
@@ -192,7 +242,7 @@ export default function NoteEditor({ note, mode = 'text' }: Props) {
     day: '2-digit', month: 'long', year: 'numeric',
   })
 
-  type SheetAction = 'pin' | 'vault' | 'read' | 'map' | 'export' | 'delete'
+  type SheetAction = 'pin' | 'vault' | 'read' | 'map' | 'history' | 'export' | 'delete'
   const sheetActions: { id: SheetAction; Icon: typeof Pin; label: string; color: string }[] = [
     { id: 'pin', Icon: Pin, label: current?.pinned ? 'Soltar nota' : 'Fixar nota', color: 'var(--accent-amber)' },
     {
@@ -203,6 +253,7 @@ export default function NoteEditor({ note, mode = 'text' }: Props) {
     },
     { id: 'read', Icon: BookOpen, label: 'Modo leitura', color: 'var(--text-secondary)' },
     { id: 'map', Icon: GitFork, label: 'Ver conexões', color: 'var(--accent-amber)' },
+    { id: 'history', Icon: History, label: 'Versões anteriores', color: 'var(--text-secondary)' },
     { id: 'export', Icon: FileText, label: 'Exportar (.md)', color: 'var(--text-secondary)' },
     { id: 'delete', Icon: Trash2, label: 'Deletar', color: 'var(--danger)' },
   ]
@@ -214,11 +265,21 @@ export default function NoteEditor({ note, mode = 'text' }: Props) {
         return withNote((id) => notesRepo.update(id, { pinned: !current?.pinned }))
       case 'vault':
         return withNote(async (id) => {
-          await notesRepo.update(id, { inVault: !current?.inVault, pinned: false })
-          showToast(current?.inVault ? 'Nota fora do Vault' : 'Nota movida para o Vault')
+          if (!current?.inVault && !(await vault.isConfigured())) {
+            showToast('Crie a senha do Vault primeiro', { actionLabel: 'criar', onAction: () => router.push('/vault') })
+            return
+          }
+          try {
+            await notesRepo.update(id, { inVault: !current?.inVault, pinned: false })
+            showToast(current?.inVault ? 'Nota fora do Vault' : 'Nota cifrada e movida para o Vault')
+          } catch (e) {
+            if (!(e instanceof VaultLockedError)) throw e
+            showToast('Abra o Vault para mover notas', { actionLabel: 'abrir', onAction: () => router.push('/vault') })
+          }
         })
       case 'read': return setReadingMode(true)
       case 'map': return setMapOpen(true)
+      case 'history': return withNote(async () => setVersionsOpen(true))
       case 'export': return exportMarkdown()
       case 'delete':
         return withNote(async (id) => {
@@ -368,6 +429,7 @@ export default function NoteEditor({ note, mode = 'text' }: Props) {
               onStartAudio={() => setAudioOpen(true)}
               onAIAction={runTransform}
               onSuggest={runSuggest}
+              onPhoto={runOCR}
             />
           </div>
         )}
@@ -452,6 +514,23 @@ export default function NoteEditor({ note, mode = 'text' }: Props) {
               onLinkNote={(n) => { appendContent(`[[${n.title ?? ''}]]`); showToast('Conexão criada') }}
               onAddIdea={(idea) => { appendContent(`- [ ] ${idea}`); showToast('Ideia adicionada como tarefa') }}
               onClose={() => setSuggestions(null)}
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {versionsOpen && noteId && (
+            <VersionsSheet
+              noteId={noteId}
+              onClose={() => setVersionsOpen(false)}
+              onRestore={async (v) => {
+                await flush()
+                await notesRepo.checkpoint(noteId)
+                setTitle(v.title ?? ''); setContent(v.content); setTags(v.tags)
+                scheduleSave({ title: v.title ?? '', content: v.content, tags: v.tags })
+                setVersionsOpen(false)
+                showToast('Versão restaurada — a anterior ficou no histórico')
+              }}
             />
           )}
         </AnimatePresence>

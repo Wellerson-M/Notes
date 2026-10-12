@@ -16,6 +16,12 @@ export type AIRequest =
   | { kind: 'transform'; action: TransformAction; title?: string | null; content: string }
   | { kind: 'suggest'; title?: string | null; content: string; tags: string[]; notes: NoteDigest[] }
   | { kind: 'assistant'; message: string; history: ChatTurn[]; notes: NoteDigest[]; today: string }
+  /** Foto → texto. `image` é base64 sem o prefixo data: */
+  | { kind: 'ocr'; image: string; mimeType: string }
+  /** Vetores para a busca por sentido */
+  | { kind: 'embed'; texts: string[]; task: 'document' | 'query' }
+  /** Retrospectiva de um período (diário) */
+  | { kind: 'review'; period: string; notes: NoteDigest[] }
 
 export type Suggestions = {
   title: string

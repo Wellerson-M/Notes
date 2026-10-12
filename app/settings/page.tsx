@@ -9,10 +9,12 @@ import { useUIStore } from '@/store/ui'
 import { db, getMeta } from '@/lib/db'
 import { syncNow } from '@/lib/sync'
 import { useNotes } from '@/lib/repo'
-import { getRelativeDate } from '@/lib/notes'
+import { getPreview, getRelativeDate } from '@/lib/notes'
 import { clearRecentSearches } from '@/lib/recent-searches'
 import type { Note } from '@/lib/types'
 import { APP_VERSION, APP_BUILT_AT, applyUpdate, checkForUpdate } from '@/lib/updates'
+import { makeZip } from '@/lib/zip'
+import { useRouter } from 'next/navigation'
 
 function Section({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
   return (
@@ -99,16 +101,17 @@ const SYNC_LABELS: Record<string, string> = {
   unauthorized: 'não conectado',
 }
 
-function download(name: string, content: string, type: string) {
+function download(name: string, content: string | Blob, type: string) {
   const a = document.createElement('a')
-  a.href = URL.createObjectURL(new Blob([content], { type }))
+  a.href = URL.createObjectURL(typeof content === 'string' ? new Blob([content], { type }) : content)
   a.download = name
   a.click()
   URL.revokeObjectURL(a.href)
 }
 
 export default function SettingsPage() {
-  const { particleEffects, setParticleEffects, reducedMotion, setReducedMotion, syncStatus, showToast } = useUIStore()
+  const router = useRouter()
+  const { particleEffects, setParticleEffects, reducedMotion, setReducedMotion, syncStatus, showToast, vaultLocked } = useUIStore()
   const notes = useNotes()
   const [server, setServer] = useState<ServerStatus | null>(null)
   const [serverError, setServerError] = useState(false)
@@ -176,11 +179,38 @@ export default function SettingsPage() {
     }
   }
 
-  const exportAll = () => {
-    const data = (notes ?? []).filter((n) => !n.inVault)
-    const stamp = new Date().toISOString().slice(0, 10)
-    download(`grafite-notas-${stamp}.json`, JSON.stringify(data, null, 2), 'application/json')
-    showToast(`${data.length} notas exportadas (Vault fica de fora)`)
+  const stamp = () => new Date().toISOString().slice(0, 10)
+
+  /** Backup completo, como está gravado: as notas do Vault vão cifradas */
+  const exportAll = async () => {
+    const rows = (await db.notes.toArray()).filter((n) => !n.deleted).map(({ dirty: _d, ...n }) => n)
+    download(`grafite-notas-${stamp()}.json`, JSON.stringify(rows, null, 2), 'application/json')
+    const sealed = rows.filter((n) => n.cipher).length
+    showToast(`${rows.length} notas no backup${sealed ? ` (${sealed} do Vault, cifradas)` : ''}`)
+  }
+
+  /** Um .md por nota, para abrir em qualquer editor (Obsidian, VS Code...). O Vault fica de fora. */
+  const exportMarkdown = () => {
+    const list = (notes ?? []).filter((n) => !n.inVault)
+    const used = new Set<string>()
+    const files = list.map((n) => {
+      const base = (n.title || getPreview(n.content, 40) || 'nota').replace(/[\\/:*?"<>|#\n]/g, '-').trim().slice(0, 60) || 'nota'
+      let name = base
+      for (let i = 2; used.has(name.toLowerCase()); i++) name = `${base} (${i})`
+      used.add(name.toLowerCase())
+      const front = [
+        '---',
+        `criada: ${n.createdAt}`,
+        `editada: ${n.updatedAt}`,
+        n.tags.length ? `tags: [${n.tags.join(', ')}]` : null,
+        n.pinned ? 'fixada: true' : null,
+        '---',
+        '',
+      ].filter((l) => l !== null).join('\n')
+      return { name: `${name}.md`, content: front + (n.title ? `# ${n.title}\n\n` : '') + n.content + '\n', date: new Date(n.updatedAt) }
+    })
+    download(`grafite-notas-${stamp()}.zip`, makeZip(files), 'application/zip')
+    showToast(`${files.length} notas em markdown (Vault fica de fora)`)
   }
 
   const importFile = async (file: File) => {
@@ -194,8 +224,9 @@ export default function SettingsPage() {
         const local = await db.notes.get(n.id)
         if (local && local.updatedAt >= n.updatedAt) continue
         const now = new Date().toISOString()
+        // Notas do Vault chegam cifradas (`cipher`) e continuam assim
         const defaults: Note = {
-          id: n.id, content: n.content, title: null, tags: [], pinned: false, inVault: false,
+          id: n.id, content: n.content, title: null, tags: [], pinned: false, inVault: !!n.cipher,
           attachments: {}, createdAt: now, updatedAt: now,
         }
         await db.notes.put({ ...defaults, ...(n as Partial<Note>), dirty: 1 })
@@ -344,13 +375,15 @@ export default function SettingsPage() {
 
         {/* 4. Vault e Privacidade */}
         <Section title="Vault e Privacidade" icon={Lock}>
+          <Row label="Vault" value={vaultLocked ? 'trancado' : 'aberto'} onClick={() => router.push('/vault')} />
           <Row label="Esquecer histórico de busca" danger onClick={() => { clearRecentSearches(); showToast('Histórico apagado') }} />
         </Section>
 
         {/* 5. Dados */}
         <Section title="Seus dados" icon={Info}>
-          <Row label="Exportar tudo (.json)" onClick={exportAll} />
-          <Row label="Importar de um export" onClick={() => importRef.current?.click()} />
+          <Row label="Backup completo (.json)" onClick={() => void exportAll()} />
+          <Row label="Exportar em Markdown (.zip)" onClick={exportMarkdown} />
+          <Row label="Restaurar de um backup" onClick={() => importRef.current?.click()} />
           <input
             ref={importRef}
             type="file"

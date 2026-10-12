@@ -1,8 +1,14 @@
-import { GoogleGenAI } from '@google/genai'
+import { GoogleGenAI, type GenerateContentParameters } from '@google/genai'
 import { isAuthenticated, unauthorized } from '@/lib/auth'
 import type { AIRequest, NoteDigest, TransformAction } from '@/lib/ai-types'
 
 const MODEL = process.env.GEMINI_MODEL ?? 'gemini-flash-latest'
+/** Reserva quando o modelo principal está sobrecarregado (503) — mais leve e quase sempre livre */
+const FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL ?? 'gemini-flash-lite-latest'
+const EMBED_MODEL = process.env.GEMINI_EMBED_MODEL ?? 'gemini-embedding-001'
+const EMBED_DIMS = 256
+const MAX_IMAGE_B64 = 4_000_000
+const MAX_EMBED_TEXTS = 100
 
 const BASE = `Você é a IA do "Grafite Notas", um app pessoal de anotações. Responda sempre em português do Brasil,
 de forma direta e calorosa, sem floreios. Use markdown simples (títulos ##, listas, **negrito**, tarefas "- [ ] ").`
@@ -72,6 +78,27 @@ const ASSISTANT_RULES = `Você é o assistente das notas do usuário. Entenda o 
 - se for conversa, ideia ou pedido de sugestão, responda e, se fizer sentido, proponha salvar como nota.
 Nunca invente ids: use apenas os da lista. Seja breve na resposta.`
 
+const OCR_PROMPT = `Transcreva todo o texto da imagem (pode ser foto de quadro, caderno, livro, print ou documento).
+Mantenha a estrutura em markdown: títulos, listas, tabelas simples e tarefas ("- [ ] ") quando houver.
+Corrija só erros óbvios de leitura. Devolva apenas o texto, sem comentários.
+Se a imagem não tiver texto, descreva-a em uma ou duas frases começando com "Imagem:".`
+
+const REVIEW_RULES = `Escreva em markdown, curto e útil. Use exatamente estes títulos (sem acrescentar nada a eles)
+e pule a seção que ficar vazia — nunca escreva "nenhuma decisão" ou parecido:
+
+## Em resumo
+(2 a 3 frases sobre o que marcou o período)
+## Temas
+(os assuntos que mais apareceram, em lista)
+## Decisões e ideias
+(o que foi decidido ou pensado de importante)
+## Pendências
+(tarefas abertas como "- [ ] tarefa (título da nota de origem)" — nunca cite ids)
+## Para a próxima semana
+(1 a 3 sugestões práticas)
+
+As linhas entre parênteses são instruções para você, não copie. Baseie-se só nas notas; não invente fatos.`
+
 export async function POST(request: Request) {
   if (!(await isAuthenticated())) return unauthorized()
   const apiKey = process.env.GEMINI_API_KEY
@@ -88,8 +115,7 @@ export async function POST(request: Request) {
     if (body.kind === 'transform') {
       const instruction = TRANSFORMS[body.action]
       if (!instruction) return Response.json({ error: 'ação desconhecida' }, { status: 400 })
-      const res = await ai.models.generateContent({
-        model: MODEL,
+      const res = await generate(ai, {
         contents: [
           instruction,
           'Devolva apenas o texto resultante, sem comentários.',
@@ -104,8 +130,7 @@ export async function POST(request: Request) {
     }
 
     if (body.kind === 'suggest') {
-      const res = await ai.models.generateContent({
-        model: MODEL,
+      const res = await generate(ai, {
         contents: [
           'Analise a nota abaixo e sugira melhorias. Para "related", use somente ids da lista de outras notas.',
           '',
@@ -127,8 +152,7 @@ export async function POST(request: Request) {
         .slice(-8)
         .map((t) => `${t.role === 'user' ? 'Usuário' : 'Você'}: ${t.text}`)
         .join('\n')
-      const res = await ai.models.generateContent({
-        model: MODEL,
+      const res = await generate(ai, {
         contents: [
           `Hoje é ${body.today}.`,
           ASSISTANT_RULES,
@@ -146,6 +170,48 @@ export async function POST(request: Request) {
       return Response.json(JSON.parse(res.text ?? '{}'))
     }
 
+    if (body.kind === 'ocr') {
+      if (typeof body.image !== 'string' || body.image.length > MAX_IMAGE_B64 || !/^image\/(jpeg|png|webp)$/.test(body.mimeType)) {
+        return Response.json({ error: 'Imagem inválida ou grande demais.' }, { status: 400 })
+      }
+      const res = await generate(ai, {
+        contents: [{
+          role: 'user',
+          parts: [
+            { inlineData: { mimeType: body.mimeType, data: body.image } },
+            { text: OCR_PROMPT },
+          ],
+        }],
+        config: { systemInstruction: BASE },
+      })
+      return Response.json({ text: res.text?.trim() ?? '' })
+    }
+
+    if (body.kind === 'embed') {
+      const texts = (Array.isArray(body.texts) ? body.texts : []).slice(0, MAX_EMBED_TEXTS).map((t) => clip(String(t), 2000) || ' ')
+      if (!texts.length) return Response.json({ vectors: [] })
+      const res = await ai.models.embedContent({
+        model: EMBED_MODEL,
+        contents: texts,
+        config: { taskType: body.task === 'query' ? 'RETRIEVAL_QUERY' : 'RETRIEVAL_DOCUMENT', outputDimensionality: EMBED_DIMS },
+      })
+      return Response.json({ vectors: (res.embeddings ?? []).map((e) => normalize(e.values ?? [])) })
+    }
+
+    if (body.kind === 'review') {
+      const res = await generate(ai, {
+        contents: [
+          `Faça uma retrospectiva das anotações do usuário no período: ${body.period}.`,
+          REVIEW_RULES,
+          '',
+          'NOTAS DO PERÍODO',
+          digestBlock(body.notes),
+        ].join('\n'),
+        config: { systemInstruction: BASE },
+      })
+      return Response.json({ text: res.text?.trim() ?? '' })
+    }
+
     return Response.json({ error: 'tipo desconhecido' }, { status: 400 })
   } catch (err) {
     if ((err as { status?: number }).status === 429) {
@@ -154,8 +220,48 @@ export async function POST(request: Request) {
         { status: 429 },
       )
     }
+    if (overloaded(err)) {
+      return Response.json(
+        { error: 'A IA do Google está sobrecarregada agora. Tente de novo em instantes.' },
+        { status: 503 },
+      )
+    }
     console.error('[api/ai]', err)
     return Response.json({ error: 'A IA não conseguiu responder agora.' }, { status: 502 })
+  }
+}
+
+/** Tempo máximo do modelo principal antes de desistir e ir para o reserva */
+const PRIMARY_TIMEOUT_MS = 20_000
+
+class Timeout extends Error {}
+
+const overloaded = (err: unknown) =>
+  err instanceof Timeout || [500, 503].includes((err as { status?: number }).status ?? 0)
+
+/** No plano grátis cada modelo tem a sua cota: limite (429) no principal também vale tentar o reserva */
+const retryable = (err: unknown) => overloaded(err) || (err as { status?: number }).status === 429
+
+/**
+ * Gera com o modelo principal; se o Google estiver sobrecarregado (500/503), a cota do modelo
+ * acabar (429) ou ele demorar demais, tenta o modelo reserva uma vez.
+ */
+async function generate(ai: GoogleGenAI, params: Omit<GenerateContentParameters, 'model'>) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), PRIMARY_TIMEOUT_MS)
+  try {
+    return await ai.models.generateContent({
+      ...params,
+      model: MODEL,
+      config: { ...params.config, abortSignal: controller.signal },
+    })
+  } catch (err) {
+    const error = controller.signal.aborted ? new Timeout('o modelo principal demorou demais') : err
+    if (!retryable(error) || FALLBACK_MODEL === MODEL) throw error
+    if (!controller.signal.aborted) await new Promise((r) => setTimeout(r, 800))
+    return ai.models.generateContent({ ...params, model: FALLBACK_MODEL })
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -167,6 +273,12 @@ function digestBlock(notes: NoteDigest[]) {
       return `[id:${n.id}] ${n.date} — ${n.title ?? 'sem título'}${tags}\n${n.text}`
     })
     .join('\n---\n')
+}
+
+function normalize(v: number[]) {
+  // Vetores truncados (outputDimensionality) não vêm normalizados
+  const len = Math.hypot(...v) || 1
+  return v.map((x) => Math.round((x / len) * 1e5) / 1e5)
 }
 
 function clip(text: string, max: number) {

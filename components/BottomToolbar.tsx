@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
-import { CheckSquare, Mic, Hash, LayoutTemplate, Sparkles, Lightbulb } from 'lucide-react'
+import { CheckSquare, Mic, Camera, LayoutTemplate, Sparkles, Lightbulb } from 'lucide-react'
 import BottomSheet from './BottomSheet'
 import type { TransformAction } from '@/lib/ai-types'
 
@@ -13,6 +13,8 @@ const TEMPLATES = [
   { id: 'shopping', label: 'Lista de compras', icon: '🛒', content: '## Lista de compras\n\n- [ ] \n- [ ] \n- [ ] \n' },
   { id: 'recipe', label: 'Receita', icon: '🍳', content: '# {nome da receita}\n\n**Porções:** \n**Tempo:** \n\n**Ingredientes:**\n- \n\n**Modo de preparo:**\n1. \n' },
 ]
+
+const PHOTO_INPUT = 'note-photo-input'
 
 const AI_ACTIONS: { id: TransformAction; label: string; desc: string }[] = [
   { id: 'summarize', label: 'Resumir', desc: 'Condensa o texto mantendo os pontos principais' },
@@ -28,9 +30,11 @@ interface Props {
   onStartAudio?: () => void
   onAIAction?: (action: TransformAction) => void
   onSuggest?: () => void
+  /** Foto escolhida ou tirada agora — vira texto pela IA */
+  onPhoto?: (file: File) => void
 }
 
-export default function BottomToolbar({ onInsertTemplate, onStartAudio, onAIAction, onSuggest }: Props) {
+export default function BottomToolbar({ onInsertTemplate, onStartAudio, onAIAction, onSuggest, onPhoto }: Props) {
   const [sheet, setSheet] = useState<'template' | 'ai' | null>(null)
 
   const handleTemplate = (content: string) => {
@@ -60,7 +64,7 @@ export default function BottomToolbar({ onInsertTemplate, onStartAudio, onAIActi
         {[
           { Icon: CheckSquare, label: 'tarefa', onClick: () => onInsertTemplate?.('- [ ] ') },
           { Icon: Mic, label: 'ditar', onClick: onStartAudio },
-          { Icon: Hash, label: 'tag', onClick: () => onInsertTemplate?.('#') },
+          { Icon: Camera, label: 'foto', onClick: () => document.getElementById(PHOTO_INPUT)?.click() },
           { Icon: LayoutTemplate, label: 'template', onClick: () => setSheet('template') },
           { Icon: Sparkles, label: 'IA', onClick: () => setSheet('ai'), amber: true },
         ].map(({ Icon, label, onClick, amber }) => (
@@ -80,6 +84,15 @@ export default function BottomToolbar({ onInsertTemplate, onStartAudio, onAIActi
           </button>
         ))}
       </div>
+
+      {/* Sem `capture`: o sistema oferece câmera ou galeria */}
+      <input
+        id={PHOTO_INPUT}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) onPhoto?.(f); e.target.value = '' }}
+      />
 
       {/* Bottom sheet — Template */}
       <AnimatePresence>
