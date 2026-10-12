@@ -287,7 +287,8 @@ export default function AssistantClient({ initialQuery }: { initialQuery: string
         <AnimatePresence>
           {voiceOpen && (
             <AudioRecorder
-              stopLabel="Parar e enviar"
+              stopLabel="Enviar agora"
+              autoSend
               onClose={() => setVoiceOpen(false)}
               onSave={(t) => { setVoiceOpen(false); void send(t) }}
             />

@@ -130,7 +130,7 @@ Sem login, o app funciona normalmente, só que sem nuvem e sem IA.
 
 ## IA (`app/api/ai` + `lib/ai.ts`)
 
-A chave do Gemini fica só no servidor. O modelo padrão é `gemini-flash-latest`, trocável por `GEMINI_MODEL`. Há três tipos de pedido:
+A chave do Gemini fica só no servidor. O modelo padrão é `gemini-flash-lite-latest` (~1,5s por resposta e cota grátis maior), trocável por `GEMINI_MODEL`. O `gemini-flash-latest` é a reserva: "pensa" antes de responder (5–30s) e tem cota diária grátis pequena. Há três tipos de pedido:
 
 | `kind` | Uso | Resposta |
 |---|---|---|
@@ -143,13 +143,13 @@ A chave do Gemini fica só no servidor. O modelo padrão é `gemini-flash-latest
 
 **Contexto enviado:** `buildDigests` escolhe até 40 notas (palavras em comum com o pedido, mais recência e fixadas), com prévia de 400 caracteres cada. **Notas do Vault nunca entram.** Ações propostas pela IA só são aplicadas quando o usuário toca no botão, e ids inventados pela IA são descartados na interface.
 
-**Sobrecarga:** se o modelo principal responder 500/503 ("high demand") ou 429 (cota do modelo; no plano grátis cada modelo tem a sua), ou passar de 20s, a rota tenta uma vez o `GEMINI_FALLBACK_MODEL` (padrão `gemini-flash-lite-latest`).
+**Sobrecarga:** se o modelo principal responder 500/503 ("high demand") ou 429 (cota do modelo; no plano grátis cada modelo tem a sua), ou passar de 20s, a rota tenta uma vez o `GEMINI_FALLBACK_MODEL` (padrão `gemini-flash-latest`).
 
 **Erros:** `503` quando falta a chave ou o Google está sobrecarregado, `429` quando o limite gratuito acaba e `502` nos demais casos. Todos viram mensagens em português na interface.
 
 ## Voz (`hooks/useSpeech.ts`)
 
-Usa `SpeechRecognition`/`webkitSpeechRecognition` em `pt-BR`, contínuo e com resultados parciais. O navegador encerra a escuta em silêncios longos, e o hook reinicia sozinho enquanto o usuário não para. Funciona no Chrome (Android e desktop), no Edge e no Safari (iOS 14.5+). No Firefox não existe: aparece uma mensagem pedindo o Chrome. Exige HTTPS (ou localhost) e permissão de microfone.
+Usa `SpeechRecognition`/`webkitSpeechRecognition` em `pt-BR`, com resultados parciais. O navegador encerra a escuta em silêncios longos, e o hook reinicia sozinho enquanto o usuário não para. **Android:** o modo contínuo do Chrome repete a frase a cada resultado ("oi" → "oi tudo" → "oi tudo bem"), então lá é uma frase por sessão; e o texto é sempre remontado da lista inteira de resultados e juntado por `joinSpeech`, que tira repetições e sobreposições. No assistente (`endOnSilence`), a escuta para 1,2s depois da fala e envia sozinha. Funciona no Chrome (Android e desktop), no Edge e no Safari (iOS 14.5+). No Firefox não existe: aparece uma mensagem pedindo o Chrome. Exige HTTPS (ou localhost) e permissão de microfone.
 
 ## Compartilhar para o app
 
