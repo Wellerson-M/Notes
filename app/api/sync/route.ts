@@ -1,5 +1,7 @@
+import { after } from 'next/server'
 import { isAuthenticated, unauthorized } from '@/lib/auth'
 import { describeDbError, notesCollection, type NoteDoc } from '@/lib/mongo'
+import { runReminders } from '@/lib/push'
 import type { Note } from '@/lib/types'
 
 type SyncBody = { since?: number; notes?: Note[] }
@@ -12,6 +14,8 @@ const MAX_NOTES_PER_PUSH = 500
  */
 export async function POST(request: Request) {
   if (!(await isAuthenticated())) return unauthorized()
+  // De carona: com o app em uso, os lembretes saem mesmo se o relógio externo falhar
+  after(() => runReminders('sync', 50_000).catch((err) => console.error('[lembretes]', err)))
   try {
     return await sync(request)
   } catch (err) {

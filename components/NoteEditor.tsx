@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MoreVertical, Pin, Lock, Unlock, FileText, Trash2, BookOpen, GitFork, History, CalendarDays } from 'lucide-react'
+import { MoreVertical, Pin, Lock, Unlock, FileText, Trash2, BookOpen, GitFork, History, CalendarDays, BellOff } from 'lucide-react'
 import type { Note } from '@/lib/types'
 import type { Suggestions, TransformAction } from '@/lib/ai-types'
 import { notesRepo, removeWithUndo, useNotes, VaultLockedError } from '@/lib/repo'
@@ -396,6 +396,7 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
               >
                 <CalendarDays size={11} />
                 {schedule ? scheduleLabel(schedule) : 'agendar'}
+                {schedule?.remind?.length === 0 && <BellOff size={10} aria-label="sem aviso" />}
               </button>
             )}
             {tags.map((tag) => (

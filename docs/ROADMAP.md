@@ -32,6 +32,7 @@
 | Backup completo (.json, Vault cifrado) e exportação em Markdown (.zip) | ✅ |
 | **Compartilhar para o app** (share target) e atalhos no ícone | ✅ Android; o iPhone não suporta share target em PWA |
 | Teste ponta a ponta (`npm run e2e`, 76 verificações, celular e PC, IA real) | ✅ |
+| **Lembretes por notificação** (Web Push; aviso padrão nos Ajustes, trocável ou desligável por nota; "Adiar 10 min"; chega no relógio pelo Zepp) | ✅ precisa do "relógio" no cron-job.org para sair na hora com o app fechado |
 | Merge automático de conflito (juntar as duas edições) | ❌ hoje a perdedora vai para o histórico |
 | Guardar a foto junto da nota | ❌ só o texto extraído |
 
@@ -59,10 +60,11 @@ Cadastrar `MONGODB_URI`, `APP_PASSWORD` e `GEMINI_API_KEY` na Vercel e fazer o d
 
 ### 2. Roteiro manual no celular
 Fazer o "Roteiro manual" de [TESTES.md](TESTES.md) no aparelho real (voz, instalação, gestos, biometria, câmera, compartilhar).
-**Pronto quando:** os 12 passos funcionarem; anotar aqui o que falhar.
+**Pronto quando:** os 13 passos funcionarem; anotar aqui o que falhar.
 
-### 3. Lembretes (opcional)
-Data em tarefas (`- [ ] ligar @amanhã 9h`) e notificação. Sem servidor de push, só funciona com o app aberto ou via Notification Triggers (pouco suporte). Com push: Web Push + VAPID + um cron na Vercel.
+### 3. Ligar o relógio dos lembretes
+Criar no cron-job.org (grátis) uma tarefa **a cada minuto** chamando o link de Ajustes → Lembretes → "Copiar link do relógio". A Vercel Hobby só permite cron uma vez por dia, por isso o relógio é externo.
+**Pronto quando:** Ajustes mostra "Relógio dos lembretes funcionando" e uma nota agendada para daqui a 20 min avisa 15 min antes, com o app fechado (e no relógio, se o Zepp espelhar "Notas").
 
 ### 4. Merge de conflito (opcional)
 Hoje, quando dois aparelhos editam a mesma nota offline, a versão mais nova vence e a outra vai para o histórico. Dá para juntar automaticamente com um diff de linhas (ex.: `diff-match-patch`).
@@ -83,6 +85,8 @@ Hoje, quando dois aparelhos editam a mesma nota offline, a versão mais nova ven
 - [ ] Atualizar esta página (estado, próximos passos e histórico).
 
 ## Histórico
+
+- **12/10/2026 (7)** — Lembretes por notificação (Web Push com chaves VAPID derivadas da `APP_PASSWORD`): ligar por aparelho em Ajustes → Lembretes, aviso padrão para notas com hora (15 min antes) e do dia todo (no dia, às 9h), escolha por nota em "agendar" (vários avisos ou "sem aviso"), notificação com "Adiar 10 min" e "Abrir", Vault avisa sem conteúdo. Disparo por `/api/push/tick` (cron-job.org a cada minuto) e de carona em cada sync; nunca avisa duas vezes. Teste `npm run e2e:lembretes`.
 
 - **21/05/2026** — Fase 1: frontend visual completo com dados mockados (7 telas, 22 componentes, os 5 efeitos visuais, PWA instalável). Nada persistia.
 - **04/10/2026** — Retomada: campo de partículas ligado, splash screen, estados vazios unificados. Primeiro ROADMAP.

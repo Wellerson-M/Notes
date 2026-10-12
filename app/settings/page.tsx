@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Cloud, Palette, Sparkles, Lock, Info, ChevronRight, CalendarDays } from 'lucide-react'
+import { Cloud, Palette, Sparkles, Lock, Info, ChevronRight, CalendarDays, Bell } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import SyncIndicator from '@/components/SyncIndicator'
 import { useUIStore } from '@/store/ui'
@@ -17,6 +17,7 @@ import { makeZip } from '@/lib/zip'
 import ThemePicker from '@/components/ThemePicker'
 import { AIUsage, ModelPicker } from '@/components/AISettings'
 import CalendarLink from '@/components/CalendarLink'
+import ReminderSettings from '@/components/ReminderSettings'
 import { useRouter } from 'next/navigation'
 
 function Section({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
@@ -400,7 +401,10 @@ export default function SettingsPage() {
           </p>
         </Section>
 
-        {/* 4. Vault e Privacidade */}
+        <Section title="Lembretes" icon={Bell}>
+          <ReminderSettings connected={!!connected} />
+        </Section>
+
         <Section title="Agenda do celular" icon={CalendarDays}>
           <CalendarLink connected={!!connected} />
         </Section>

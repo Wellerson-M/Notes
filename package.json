@@ -10,7 +10,8 @@
     "e2e": "node scripts/e2e.cjs",
     "e2e:gestos": "node scripts/e2e-gestos.cjs",
     "e2e:voz": "node scripts/e2e-voz.cjs",
-    "e2e:db": "node --env-file=.env.local scripts/e2e-db.cjs"
+    "e2e:db": "node --env-file=.env.local scripts/e2e-db.cjs",
+    "e2e:lembretes": "node scripts/e2e-lembretes.cjs"
   },
   "dependencies": {
     "@google/genai": "^2.28.0",
@@ -23,6 +24,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "server-only": "^0.0.1",
+    "web-push": "^3.6.7",
     "zustand": "^5.0.13"
   },
   "devDependencies": {
@@ -30,6 +32,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "playwright-core": "^1.48.2",

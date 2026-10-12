@@ -1,9 +1,12 @@
 'use client'
 import { useState } from 'react'
-import { CalendarPlus, X } from 'lucide-react'
+import { BellOff, CalendarPlus, X } from 'lucide-react'
 import BottomSheet from './BottomSheet'
 import { icsCalendar, icsEvent, quickDates, scheduleLabel, todayKey, type Schedule } from '@/lib/schedule'
 import { noteHref } from '@/lib/routes'
+import { ALL_DAY_OPTIONS, TIMED_OPTIONS, remindSummary } from '@/lib/reminders'
+import { cachedReminderSettings } from '@/lib/notify'
+import ReminderChips from './ReminderChips'
 import type { Note } from '@/lib/types'
 
 const fieldStyle: React.CSSProperties = {
@@ -49,10 +52,22 @@ export default function ScheduleSheet({ value, onChange, onClose, onExport }: {
   onExport: () => void
 }) {
   const [date, setDate] = useState(value?.date ?? todayKey())
-  const [time, setTime] = useState(value?.time ?? '')
+  const [time, setTimeRaw] = useState(value?.time ?? '')
+  /** undefined = aviso padrão dos Ajustes; [] = sem aviso */
+  const [remind, setRemind] = useState<number[] | undefined>(value?.remind)
+  const [defaults] = useState(cachedReminderSettings)
   const quick = quickDates()
 
-  const save = (d = date, t = time) => onChange({ date: d, ...(t ? { time: t } : {}) })
+  // Com hora e sem hora têm avisos diferentes: trocar de um para o outro volta ao padrão
+  const setTime = (t: string) => {
+    if (!!t !== !!time) setRemind(undefined)
+    setTimeRaw(t)
+  }
+  const allDay = !time
+  const defaultOffsets = allDay ? defaults.allDay : defaults.timed
+  const offsets = remind ?? defaultOffsets
+
+  const save = (d = date, t = time) => onChange({ date: d, ...(t ? { time: t } : {}), ...(remind ? { remind } : {}) })
 
   return (
     <BottomSheet title={value ? `Agenda · ${scheduleLabel(value)}` : 'Agendar'} onClose={onClose}>
@@ -91,6 +106,32 @@ export default function ScheduleSheet({ value, onChange, onClose, onExport }: {
               )}
             </div>
           </label>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between font-sans" style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            <span>Avisar · {remindSummary(offsets, allDay)}{remind ? '' : ' (padrão)'}</span>
+            {remind && (
+              <button onClick={() => setRemind(undefined)} style={{ background: 'none', border: 'none', color: 'var(--accent-amber)', fontSize: 12, cursor: 'pointer', padding: 0 }}>
+                usar o padrão
+              </button>
+            )}
+          </div>
+          <ReminderChips
+            options={allDay ? ALL_DAY_OPTIONS : TIMED_OPTIONS}
+            value={offsets}
+            onChange={setRemind}
+            allDay={allDay}
+          />
+          {offsets.length > 0 && (
+            <button
+              onClick={() => setRemind([])}
+              className="touch-feedback self-start flex items-center gap-1.5 rounded-full px-3 py-1.5 font-sans"
+              style={{ fontSize: 13, cursor: 'pointer', background: 'transparent', color: 'var(--text-muted)', border: '1px dashed var(--border-strong)' }}
+            >
+              <BellOff size={13} /> sem aviso
+            </button>
+          )}
         </div>
 
         <button

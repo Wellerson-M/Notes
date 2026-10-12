@@ -38,8 +38,13 @@ export function describeDbError(err: unknown): string {
   return 'O banco de dados falhou agora. Tente de novo em instantes.'
 }
 
+/** O banco do app (MONGODB_DB permite o banco separado dos testes) */
+export async function mongoDb() {
+  return (await client()).db(cleanEnv(process.env.MONGODB_DB) ?? 'grafite-notas')
+}
+
 export async function notesCollection(): Promise<Collection<NoteDoc>> {
-  const db = (await client()).db(cleanEnv(process.env.MONGODB_DB) ?? 'grafite-notas')
+  const db = await mongoDb()
   const col = db.collection<NoteDoc>('notes')
   globalForMongo.indexed ??= col.createIndex({ syncedAt: 1 })
   await globalForMongo.indexed

@@ -25,9 +25,10 @@ export type Note = {
   /**
    * Data na agenda (compromisso, prazo, lembrete), no fuso do aparelho: `date` = AAAA-MM-DD e
    * `time` = HH:MM (sem hora = o dia todo). Fica fora da cifra mesmo no Vault, mas notas do Vault
-   * nunca vão para o feed da agenda do celular.
+   * nunca vão para o feed da agenda do celular. `remind` = avisos em minutos antes (ausente = padrão
+   * dos Ajustes; vazio = sem aviso; ver lib/reminders.ts).
    */
-  schedule?: { date: string; time?: string }
+  schedule?: { date: string; time?: string; remind?: number[] }
 }
 
 /** Registro local: a nota mais o controle de sync (nunca vai para o servidor) */

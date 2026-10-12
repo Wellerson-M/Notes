@@ -32,6 +32,8 @@ app/
   api/auth/route.ts      login (POST), status (GET), logout (DELETE)
   api/ai/route.ts        transform | suggest | assistant → Gemini
   api/version/route.ts   versão do deploy no ar
+  api/agenda/            feed .ics da agenda (+ /link)
+  api/push/              lembretes: inscrição e padrões, /test, /tick (relógio), /snooze (adiar)
   layout.tsx             registra o service worker, monta AppBoot e Toast
   globals.css            design tokens + coluna central no PC
 
@@ -61,11 +63,14 @@ lib/
   routes.ts              noteHref(id), newNoteHref(mode)
   updates.ts             atualização automática do app instalado
   recent-searches.ts     histórico de busca (localStorage)
+  schedule.ts            datas da agenda e .ics
+  reminders.ts           lembretes: opções, padrões, fuso (compartilhado com o servidor)
+  push.ts / notify.ts    lembretes no servidor (Web Push, relógio) / no aparelho (permissão, inscrição)
 
 hooks/useSpeech.ts       Web Speech API em pt-BR
 store/ui.ts              Zustand: só estado de interface (filtro, toast, status do sync…)
 public/sw.js             service worker (cache offline)
-scripts/e2e.cjs          teste ponta a ponta
+scripts/e2e*.cjs         testes ponta a ponta (geral, gestos, voz, lembretes)
 ```
 
 ## Dados
@@ -181,6 +186,15 @@ Uma nota pode ter `schedule: { date: 'AAAA-MM-DD', time?: 'HH:MM' }`, sempre no 
 **Agenda do celular**, por dois caminhos:
 - **Por nota:** "Agenda do celular" gera um `.ics` e abre o compartilhar do sistema (a Agenda Samsung importa). É na hora, mas é uma cópia: editar a nota não atualiza o evento.
 - **Assinatura:** `/api/agenda?k=<chave>` é um feed iCalendar com todas as notas datadas fora do Vault. A chave é `HMAC(APP_PASSWORD, "grafite-calendar-v1")`, porque apps de agenda não mandam cookie (trocar a senha invalida o link). Ajustes → "Agenda do celular" abre o Google Agenda para assinar, e a Agenda Samsung mostra os calendários da conta Google. O Google relê assinaturas no tempo dele (até ~1 dia), e o app do Google Agenda no celular não assina por link: a assinatura é feita no site (de preferência no PC).
+
+## Lembretes (`lib/reminders.ts`, `lib/push.ts`, `lib/notify.ts`)
+
+- **Na nota:** `schedule.remind` = avisos em minutos antes (ausente = padrão dos Ajustes; `[]` = sem aviso). Nas notas do dia todo, o "momento" é o horário dos Ajustes (padrão 9h) do próprio dia.
+- **Padrões e fuso** ficam no Atlas (`push_meta`), porque quem dispara é o servidor. As datas das notas são "de parede"; o fuso vem do aparelho que ligou as notificações.
+- **Aparelhos:** cada um se inscreve no Web Push (`push_subs`). As chaves VAPID são derivadas da `APP_PASSWORD` (nenhuma variável nova). Trocar a senha troca as chaves, e é preciso ligar de novo em cada aparelho. Inscrição recusada pelo serviço de push (404/410) é apagada.
+- **Disparo:** `runReminders` olha as notas datadas de ontem até 8 dias à frente e manda o que venceu nos últimos 45 min. Antes de mandar, reserva a chave `nota|data|hora|antecedência` em `push_sent` (TTL de 14 dias), então chamadas repetidas ou simultâneas nunca avisam duas vezes. Mudar a data gera chaves novas e o aviso volta a valer. Compromisso que já passou não avisa.
+- **Quem chama:** `/api/push/tick?k=<HMAC(APP_PASSWORD,"grafite-cron-v1")>` pelo cron-job.org a cada minuto (a Vercel Hobby só tem cron diário), e de carona em cada `/api/sync` (via `after()`, no máximo 1 vez a cada 50s). A resposta do relógio só traz ids, nunca o conteúdo.
+- **No aparelho:** `public/sw.js` mostra a notificação (tag = id da nota, então um aviso novo substitui o anterior), com "Adiar 10 min" (`/api/push/snooze`, pelo cookie de sessão) e "Abrir". O Vault avisa só "Lembrete do Vault". No relógio (Zepp/Amazfit), aparece por espelhamento das notificações do celular.
 
 ## Modelos e uso da IA (`lib/ai-models.ts`, `lib/usage.ts`)
 

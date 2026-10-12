@@ -33,6 +33,7 @@ npm run build     # precisa passar antes de commit
 npm run lint      # sem erros (2 avisos de <img> no NoteCard)
 npm run e2e       # ponta a ponta — SÓ com o servidor em MONGODB_DB=grafite-notas-e2e (o Atlas tem dados reais); ver docs/TESTES.md
 npm run e2e:gestos / e2e:voz   # gestos e ditado (sync e IA simulados)
+npm run e2e:lembretes          # notificações — também SÓ no banco de testes
 ```
 
 Variáveis de ambiente: veja `.env.example` (`MONGODB_URI`, `APP_PASSWORD`, `GEMINI_API_KEY`).
