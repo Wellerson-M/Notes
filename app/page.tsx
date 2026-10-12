@@ -6,13 +6,16 @@ import ChipScroller, { Chip } from '@/components/ChipScroller'
 import NoteCard from '@/components/NoteCard'
 import BottomNav from '@/components/BottomNav'
 import FAB from '@/components/FAB'
-import { mockNotes } from '@/mocks/notes'
+import type { Note } from '@/lib/types'
+import { useNotes } from '@/lib/repo'
+import { syncNow } from '@/lib/sync'
 import { useUIStore } from '@/store/ui'
+import EmptyState from '@/components/EmptyState'
 
 const FILTERS = ['Tudo', 'Hoje', 'Esta semana', 'Com áudio', 'Com foto', 'Tarefas', 'Fixadas', 'Vault']
 
-function filterNotes(notes: typeof mockNotes, filter: string) {
-  const now = new Date('2026-05-21T12:00:00')
+function filterNotes(notes: Note[], filter: string) {
+  const now = new Date()
   switch (filter) {
     case 'Hoje':
       return notes.filter((n) => {
@@ -29,13 +32,13 @@ function filterNotes(notes: typeof mockNotes, filter: string) {
     case 'Com foto':
       return notes.filter((n) => (n.attachments.photos?.length ?? 0) > 0)
     case 'Tarefas':
-      return notes.filter((n) => (n.tasks?.length ?? 0) > 0)
+      return notes.filter((n) => !n.inVault && (n.tasks?.length ?? 0) > 0)
     case 'Fixadas':
-      return notes.filter((n) => n.pinned)
+      return notes.filter((n) => !n.inVault && n.pinned)
     case 'Vault':
       return notes.filter((n) => n.inVault)
     default:
-      return notes
+      return notes.filter((n) => !n.inVault)
   }
 }
 
@@ -46,7 +49,8 @@ export default function TimelinePage() {
   const [headerVisible, setHeaderVisible] = useState(true)
   const lastScrollY = useRef(0)
 
-  const notes = filterNotes(mockNotes, activeFilter)
+  const allNotes = useNotes()
+  const notes = filterNotes(allNotes ?? [], activeFilter)
   const sortedNotes = [...notes].sort((a, b) => {
     if (a.pinned && !b.pinned) return -1
     if (!a.pinned && b.pinned) return 1
@@ -72,14 +76,26 @@ export default function TimelinePage() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  const handleRefresh = () => {
-    setIsRefreshing(true)
-    useUIStore.getState().setSyncStatus('syncing')
-    setTimeout(() => {
-      setIsRefreshing(false)
-      useUIStore.getState().setSyncStatus('ok')
-    }, 1500)
-  }
+  // Pull-to-refresh: puxar a lista para baixo estando no topo dispara o sync
+  const pullStart = useRef<number | null>(null)
+  useEffect(() => {
+    const onStart = (e: TouchEvent) => { pullStart.current = window.scrollY <= 0 ? e.touches[0].clientY : null }
+    const onEnd = (e: TouchEvent) => {
+      if (pullStart.current === null) return
+      const dy = e.changedTouches[0].clientY - pullStart.current
+      pullStart.current = null
+      if (dy > 90) {
+        setIsRefreshing(true)
+        void syncNow().finally(() => setIsRefreshing(false))
+      }
+    }
+    window.addEventListener('touchstart', onStart, { passive: true })
+    window.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      window.removeEventListener('touchstart', onStart)
+      window.removeEventListener('touchend', onEnd)
+    }
+  }, [])
 
   return (
     <main style={{ background: 'var(--bg-base)', minHeight: '100dvh', paddingBottom: 88 }}>
@@ -125,13 +141,11 @@ export default function TimelinePage() {
 
       {/* Notes */}
       <div className="flex flex-col gap-3 px-4">
-        {sortedNotes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center" style={{ paddingTop: 80 }}>
-            <span style={{ fontSize: 40, opacity: 0.3 }}>✍️</span>
-            <p className="font-serif italic" style={{ color: 'var(--text-muted)', fontSize: 16, marginTop: 12 }}>
-              nada por aqui ainda...
-            </p>
-          </div>
+        {allNotes === undefined ? null : sortedNotes.length === 0 ? (
+          <EmptyState
+            icon={<span style={{ fontSize: 40, opacity: 0.3 }}>✍️</span>}
+            message={activeFilter === 'Tudo' ? 'toque no + para a primeira nota...' : 'nada por aqui ainda...'}
+          />
         ) : (
           sortedNotes.map((note, i) => (
             <motion.div

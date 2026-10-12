@@ -178,3 +178,28 @@ body {
   border-top: 1px solid var(--border-subtle);
   margin: 16px 0;
 }
+
+/* PC / tablet: o app vira uma coluna central de leitura.
+   Barras e folhas fixas (.app-bar) e botões flutuantes (.app-fab) acompanham a coluna. */
+:root {
+  --app-column: 680px;
+}
+
+@media (min-width: 760px) {
+  main {
+    max-width: var(--app-column);
+    margin-left: auto;
+    margin-right: auto;
+    border-left: 1px solid var(--border-subtle);
+    border-right: 1px solid var(--border-subtle);
+  }
+
+  .app-bar {
+    left: max(0px, calc(50% - var(--app-column) / 2)) !important;
+    right: max(0px, calc(50% - var(--app-column) / 2)) !important;
+  }
+
+  .app-fab {
+    right: calc(max(0px, 50% - var(--app-column) / 2) + 20px) !important;
+  }
+}

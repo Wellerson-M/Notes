@@ -3,6 +3,7 @@ import { useRef, useState, useCallback, KeyboardEvent } from 'react'
 import AmberCaret from './AmberCaret'
 import FloatingToolbar from './FloatingToolbar'
 import WikilinkAutocomplete from './WikilinkAutocomplete'
+import WikiLink from './WikiLink'
 
 interface Props {
   value: string
@@ -10,7 +11,7 @@ interface Props {
   placeholder?: string
 }
 
-function renderMarkdown(text: string, onToggleTask?: (lineIndex: number) => void): React.ReactNode[] {
+export function renderMarkdown(text: string, onToggleTask?: (lineIndex: number) => void): React.ReactNode[] {
   return text.split('\n').map((line, i) => {
     // Heading
     const h1 = line.match(/^# (.+)/)
@@ -39,7 +40,7 @@ function renderMarkdown(text: string, onToggleTask?: (lineIndex: number) => void
         <div style={{ width: 16, height: 16, borderRadius: 4, background: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" stroke="#111210" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </div>
-        <span style={{ color: 'var(--text-muted)', textDecoration: 'line-through', fontSize: 15, fontFamily: 'var(--font-serif)' }}>{taskDone[1]}</span>
+        <span style={{ color: 'var(--text-muted)', textDecoration: 'line-through', fontSize: 15, fontFamily: 'var(--font-serif)' }}>{inlineMarkdown(taskDone[1])}</span>
       </div>
     )
     const taskOpen = line.match(/^- \[ \] (.+)/)
@@ -51,7 +52,7 @@ function renderMarkdown(text: string, onToggleTask?: (lineIndex: number) => void
         onClick={(e) => { e.stopPropagation(); onToggleTask?.(i) }}
       >
         <div style={{ width: 16, height: 16, borderRadius: 4, border: '1.5px solid var(--border-strong)', flexShrink: 0 }} />
-        <span style={{ color: 'var(--text-secondary)', fontSize: 15, fontFamily: 'var(--font-serif)' }}>{taskOpen[1]}</span>
+        <span style={{ color: 'var(--text-secondary)', fontSize: 15, fontFamily: 'var(--font-serif)' }}>{inlineMarkdown(taskOpen[1])}</span>
       </div>
     )
 
@@ -78,13 +79,15 @@ function renderMarkdown(text: string, onToggleTask?: (lineIndex: number) => void
 
 function inlineMarkdown(text: string): React.ReactNode {
   // Bold
-  const parts = text.split(/(\*\*[^*]+\*\*|_[^_]+_|`[^`]+`|\[.+?\]\(.+?\))/)
+  const parts = text.split(/(\[\[[^\]]+\]\]|\*\*[^*]+\*\*|_[^_]+_|`[^`]+`|\[.+?\]\(.+?\))/)
   return parts.map((part, i) => {
+    const wiki = part.match(/^\[\[([^\]]+)\]\]$/)
+    if (wiki) return <WikiLink key={i} title={wiki[1].trim()} />
     if (part.match(/^\*\*(.+)\*\*$/)) return <strong key={i}>{part.slice(2, -2)}</strong>
     if (part.match(/^_(.+)_$/)) return <em key={i}>{part.slice(1, -1)}</em>
     if (part.match(/^`(.+)`$/)) return <code key={i} style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-elevated)', padding: '1px 5px', borderRadius: 4, fontSize: 13 }}>{part.slice(1, -1)}</code>
     const link = part.match(/^\[(.+?)\]\((.+?)\)$/)
-    if (link) return <a key={i} href={link[2]} style={{ color: 'var(--accent-amber)', textDecoration: 'underline', textDecorationColor: 'rgba(232,165,71,0.4)' }}>{link[1]}</a>
+    if (link) return <a key={i} href={link[2]} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: 'var(--accent-amber)', textDecoration: 'underline', textDecorationColor: 'rgba(232,165,71,0.4)' }}>{link[1]}</a>
     return part
   })
 }

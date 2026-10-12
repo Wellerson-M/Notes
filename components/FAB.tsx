@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import RadialMenu from './RadialMenu'
+import { newNoteHref } from '@/lib/routes'
 
 export default function FAB() {
   const router = useRouter()
@@ -37,7 +38,7 @@ export default function FAB() {
 
   const handleClick = useCallback(() => {
     if (!didLongPress.current) {
-      router.push('/note/new')
+      router.push(newNoteHref())
     }
   }, [router])
 
@@ -45,6 +46,7 @@ export default function FAB() {
     <>
       <motion.button
         ref={fabRef}
+        className="app-fab"
         onPointerDown={startLongPress}
         onPointerUp={cancelLongPress}
         onPointerLeave={cancelLongPress}

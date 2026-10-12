@@ -1,5 +1,5 @@
 'use client'
-import { Note } from '@/mocks/notes'
+import type { Note } from '@/lib/types'
 
 interface Props {
   notes: Note[]
@@ -25,7 +25,7 @@ export default function HeatmapCalendar({ notes, year, month, selectedDay, onSel
 
   const maxCount = Math.max(...Object.values(countByDay), 1)
 
-  const today = new Date('2026-05-21')
+  const today = new Date()
   const isToday = (day: number) =>
     today.getFullYear() === year && today.getMonth() === month && today.getDate() === day
 

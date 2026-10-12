@@ -3,15 +3,18 @@ import { useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import HeatmapCalendar from '@/components/HeatmapCalendar'
-import { mockNotes, getRelativeDate } from '@/mocks/notes'
+import type { Note } from '@/lib/types'
+import { getPreview } from '@/lib/notes'
+import { useNotes } from '@/lib/repo'
 import Link from 'next/link'
+import EmptyState from '@/components/EmptyState'
+import { noteHref } from '@/lib/routes'
 
-const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 const MONTH_FULL = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 const WEEK_DAYS_FULL = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado']
 
-function groupByDay(notes: typeof mockNotes, year: number, month: number) {
-  const grouped: Record<number, typeof mockNotes> = {}
+function groupByDay(notes: Note[], year: number, month: number) {
+  const grouped: Record<number, Note[]> = {}
   notes.forEach((n) => {
     const d = new Date(n.createdAt)
     if (d.getFullYear() === year && d.getMonth() === month) {
@@ -24,11 +27,14 @@ function groupByDay(notes: typeof mockNotes, year: number, month: number) {
 }
 
 export default function JournalPage() {
-  const [year, setYear] = useState(2026)
-  const [month, setMonth] = useState(4) // maio = index 4
-  const [selectedDay, setSelectedDay] = useState<number | undefined>(21) // hoje
+  const [today] = useState(() => new Date())
+  const [year, setYear] = useState(today.getFullYear())
+  const [month, setMonth] = useState(today.getMonth())
+  const [selectedDay, setSelectedDay] = useState<number | undefined>(today.getDate())
 
-  const grouped = groupByDay(mockNotes, year, month)
+  // O cofre não aparece no diário
+  const notes = (useNotes() ?? []).filter((n) => !n.inVault)
+  const grouped = groupByDay(notes, year, month)
   const daysWithNotes = Object.keys(grouped).map(Number).sort((a, b) => b - a)
 
   const prevMonth = () => {
@@ -41,10 +47,6 @@ export default function JournalPage() {
     else setMonth(m => m + 1)
     setSelectedDay(undefined)
   }
-
-  const displayNotes = selectedDay && grouped[selectedDay]
-    ? grouped[selectedDay]
-    : daysWithNotes.flatMap(d => grouped[d] ?? [])
 
   return (
     <main style={{ background: 'var(--bg-base)', minHeight: '100dvh', paddingBottom: 88 }}>
@@ -80,7 +82,7 @@ export default function JournalPage() {
       {/* Heatmap */}
       <div className="px-4 py-4" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
         <HeatmapCalendar
-          notes={mockNotes}
+          notes={notes}
           year={year}
           month={month}
           selectedDay={selectedDay}
@@ -91,11 +93,7 @@ export default function JournalPage() {
       {/* Day groups */}
       <div className="flex flex-col gap-6 px-4 py-4">
         {daysWithNotes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center" style={{ paddingTop: 60 }}>
-            <p className="font-serif italic" style={{ color: 'var(--text-muted)', fontSize: 15 }}>
-              nenhuma nota neste mês
-            </p>
-          </div>
+          <EmptyState message="nenhuma nota neste mês" paddingTop={60} fieldHeight={200} />
         ) : (
           (selectedDay && grouped[selectedDay] ? [selectedDay] : daysWithNotes).map((day) => {
             const dayNotes = grouped[day] ?? []
@@ -119,17 +117,10 @@ export default function JournalPage() {
                 <div className="flex flex-col gap-2">
                   {dayNotes.map((note) => {
                     const time = new Date(note.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-                    const preview = note.content
-                      .replace(/^#{1,6}\s+/gm, '')
-                      .replace(/\*\*/g, '')
-                      .replace(/^[-*]\s+/gm, '')
-                      .split('\n')
-                      .filter(l => l.trim())
-                      .join(' ')
-                      .trim()
+                    const preview = getPreview(note.content, 80)
 
                     return (
-                      <Link href={`/note/${note.id}`} key={note.id}>
+                      <Link href={noteHref(note.id)} key={note.id}>
                         <div
                           className="touch-feedback noise-card rounded-xl px-4 py-3"
                           style={{
@@ -145,7 +136,7 @@ export default function JournalPage() {
                                 </div>
                               )}
                               <div className="font-serif line-clamp-1" style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: note.title ? 2 : 0 }}>
-                                {preview.slice(0, 80)}
+                                {preview}
                               </div>
                             </div>
                             <span className="font-sans flex-shrink-0" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{time}</span>

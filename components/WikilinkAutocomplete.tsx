@@ -1,6 +1,6 @@
 'use client'
 import { motion, AnimatePresence } from 'framer-motion'
-import { mockNotes } from '@/mocks/notes'
+import { useNotes } from '@/lib/repo'
 import { Link2 } from 'lucide-react'
 
 interface Props {
@@ -11,7 +11,8 @@ interface Props {
 }
 
 export default function WikilinkAutocomplete({ open, query, onSelect, onClose }: Props) {
-  const filtered = mockNotes
+  const notes = useNotes() ?? []
+  const filtered = notes
     .filter((n) => n.title && n.title.toLowerCase().includes(query.toLowerCase()))
     .slice(0, 8)
 
@@ -31,6 +32,7 @@ export default function WikilinkAutocomplete({ open, query, onSelect, onClose }:
             }}
           />
           <motion.div
+            className="app-bar"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}

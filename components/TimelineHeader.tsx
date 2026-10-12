@@ -1,16 +1,13 @@
 'use client'
-import { useState } from 'react'
-import { Search } from 'lucide-react'
+import { Search, Sparkles } from 'lucide-react'
 import SyncIndicator from './SyncIndicator'
 import Link from 'next/link'
 
 interface Props {
-  onSearchFocus?: () => void
   showSearch?: boolean
 }
 
-export default function TimelineHeader({ onSearchFocus, showSearch = true }: Props) {
-  const [searchValue, setSearchValue] = useState('')
+export default function TimelineHeader({ showSearch = true }: Props) {
 
   return (
     <div
@@ -33,17 +30,22 @@ export default function TimelineHeader({ onSearchFocus, showSearch = true }: Pro
 
         <div className="flex items-center gap-3">
           <SyncIndicator />
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm"
-            style={{
-              background: 'var(--bg-elevated)',
-              border: '1px solid var(--border-default)',
-              color: 'var(--accent-amber)',
-              fontSize: 13,
-            }}
-          >
-            W
-          </div>
+          <Link href="/assistant" aria-label="Assistente de IA" className="touch-feedback" style={{ padding: 4, display: 'flex' }}>
+            <Sparkles size={18} style={{ color: 'var(--accent-amber)' }} />
+          </Link>
+          <Link href="/settings">
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm"
+              style={{
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-default)',
+                color: 'var(--accent-amber)',
+                fontSize: 13,
+              }}
+            >
+              W
+            </div>
+          </Link>
         </div>
       </div>
 

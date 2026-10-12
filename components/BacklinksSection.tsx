@@ -3,7 +3,9 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown, Link2 } from 'lucide-react'
 import Link from 'next/link'
-import { getBacklinks, getUnlinkedMentions } from '@/mocks/notes'
+import { getBacklinks, getUnlinkedMentions, getPreview } from '@/lib/notes'
+import { notesRepo, useNotes } from '@/lib/repo'
+import { noteHref } from '@/lib/routes'
 
 interface Props {
   noteId: string
@@ -11,9 +13,20 @@ interface Props {
 
 export default function BacklinksSection({ noteId }: Props) {
   const [open, setOpen] = useState(false)
-  const backlinks = getBacklinks(noteId)
-  const unlinked = getUnlinkedMentions(noteId)
+  const notes = useNotes() ?? []
+  const backlinks = getBacklinks(notes, noteId)
+  const unlinked = getUnlinkedMentions(notes, noteId)
   const total = backlinks.length
+  const title = notes.find((n) => n.id === noteId)?.title
+
+  /** Transforma a primeira menção do título em cada nota num [[wikilink]] */
+  const connectAll = async () => {
+    if (!title) return
+    const pattern = new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+    for (const n of unlinked) {
+      await notesRepo.update(n.id, { content: n.content.replace(pattern, (m) => `[[${m}]]`) })
+    }
+  }
 
   if (total === 0 && unlinked.length === 0) return null
 
@@ -53,15 +66,7 @@ export default function BacklinksSection({ noteId }: Props) {
           >
             <div className="flex flex-col gap-2 mt-3">
               {backlinks.map((note, i) => {
-                const preview = note.content
-                  .replace(/^#{1,6}\s+/gm, '')
-                  .replace(/\*\*/g, '')
-                  .replace(/^[-*]\s+/gm, '')
-                  .split('\n')
-                  .filter(l => l.trim())
-                  .join(' ')
-                  .trim()
-                  .slice(0, 90)
+                const preview = getPreview(note.content, 90)
 
                 return (
                   <motion.div
@@ -70,7 +75,7 @@ export default function BacklinksSection({ noteId }: Props) {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.05 }}
                   >
-                    <Link href={`/note/${note.id}`}>
+                    <Link href={noteHref(note.id)}>
                       <div
                         className="touch-feedback rounded-xl px-4 py-3 noise-card"
                         style={{
@@ -104,6 +109,7 @@ export default function BacklinksSection({ noteId }: Props) {
                   {unlinked.length} nota{unlinked.length > 1 ? 's' : ''} mencionam este título sem link
                 </span>
                 <button
+                  onClick={connectAll}
                   className="touch-feedback font-sans font-medium"
                   style={{
                     fontSize: 11,
