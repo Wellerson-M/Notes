@@ -1,0 +1,174 @@
+import { GoogleGenAI } from '@google/genai'
+import { isAuthenticated, unauthorized } from '@/lib/auth'
+import type { AIRequest, NoteDigest, TransformAction } from '@/lib/ai-types'
+
+const MODEL = process.env.GEMINI_MODEL ?? 'gemini-flash-latest'
+
+const BASE = `Você é a IA do "Grafite Notas", um app pessoal de anotações. Responda sempre em português do Brasil,
+de forma direta e calorosa, sem floreios. Use markdown simples (títulos ##, listas, **negrito**, tarefas "- [ ] ").`
+
+const TRANSFORMS: Record<TransformAction, string> = {
+  summarize: 'Resuma a nota mantendo os pontos principais, em poucas linhas ou tópicos curtos.',
+  tasks: 'Extraia todas as ações e pendências da nota como lista de tarefas markdown ("- [ ] ..."). Só a lista.',
+  expand: 'Desenvolva as ideias da nota com mais detalhes, exemplos e próximos passos, mantendo o tom do autor.',
+  translate: 'Traduza a nota para o inglês, preservando a formatação markdown. Se já estiver em inglês, traduza para português.',
+  fix: 'Corrija gramática, ortografia e pontuação da nota sem mudar o sentido, o tom nem a formatação.',
+  topics: 'Reestruture a nota como uma lista de tópicos organizada, agrupando assuntos relacionados.',
+}
+
+const SUGGEST_SCHEMA = {
+  type: 'object',
+  properties: {
+    title: { type: 'string', description: 'título curto e claro para a nota (até 60 caracteres)' },
+    tags: { type: 'array', items: { type: 'string' }, description: 'de 1 a 4 tags, minúsculas, sem #' },
+    related: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { noteId: { type: 'string' }, reason: { type: 'string' } },
+        required: ['noteId', 'reason'],
+      },
+      description: 'até 3 notas existentes realmente relacionadas, com o motivo em uma frase',
+    },
+    ideas: {
+      type: 'array',
+      items: { type: 'string' },
+      description: '2 a 4 sugestões práticas: próximos passos, perguntas em aberto, o que acrescentar',
+    },
+  },
+  required: ['title', 'tags', 'related', 'ideas'],
+}
+
+const ASSISTANT_SCHEMA = {
+  type: 'object',
+  properties: {
+    reply: { type: 'string', description: 'resposta ao usuário em markdown curto' },
+    noteIds: { type: 'array', items: { type: 'string' }, description: 'ids das notas citadas na resposta' },
+    actions: {
+      type: 'array',
+      description: 'ações propostas; o usuário confirma antes de aplicar',
+      items: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', enum: ['create_note', 'append_to_note', 'open_note'] },
+          noteId: { type: 'string' },
+          title: { type: 'string' },
+          content: { type: 'string' },
+          tags: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['type'],
+      },
+    },
+  },
+  required: ['reply', 'noteIds', 'actions'],
+}
+
+const ASSISTANT_RULES = `Você é o assistente das notas do usuário. Entenda o pedido em linguagem natural
+(pode vir de voz, com erros de transcrição) e:
+- se for uma PERGUNTA sobre as notas, responda com base nelas e cite os ids em noteIds;
+- se ele quer ANOTAR algo novo, proponha "create_note" com título, conteúdo bem organizado e tags;
+- se quer ACRESCENTAR algo a uma nota existente (ex.: "põe leite na lista de compras"), proponha "append_to_note" com o noteId certo e só o trecho novo;
+- se quer ABRIR ou achar uma nota, proponha "open_note";
+- se for conversa, ideia ou pedido de sugestão, responda e, se fizer sentido, proponha salvar como nota.
+Nunca invente ids: use apenas os da lista. Seja breve na resposta.`
+
+export async function POST(request: Request) {
+  if (!(await isAuthenticated())) return unauthorized()
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) {
+    return Response.json({ error: 'A IA ainda não foi configurada (falta GEMINI_API_KEY).' }, { status: 503 })
+  }
+
+  const body = (await request.json().catch(() => null)) as AIRequest | null
+  if (!body) return Response.json({ error: 'corpo inválido' }, { status: 400 })
+
+  const ai = new GoogleGenAI({ apiKey })
+
+  try {
+    if (body.kind === 'transform') {
+      const instruction = TRANSFORMS[body.action]
+      if (!instruction) return Response.json({ error: 'ação desconhecida' }, { status: 400 })
+      const res = await ai.models.generateContent({
+        model: MODEL,
+        contents: [
+          instruction,
+          'Devolva apenas o texto resultante, sem comentários.',
+          '',
+          `Título: ${body.title ?? '(sem título)'}`,
+          '',
+          clip(body.content, 20000),
+        ].join('\n'),
+        config: { systemInstruction: BASE },
+      })
+      return Response.json({ text: res.text?.trim() ?? '' })
+    }
+
+    if (body.kind === 'suggest') {
+      const res = await ai.models.generateContent({
+        model: MODEL,
+        contents: [
+          'Analise a nota abaixo e sugira melhorias. Para "related", use somente ids da lista de outras notas.',
+          '',
+          'NOTA ATUAL',
+          `Título: ${body.title ?? '(sem título)'}`,
+          `Tags atuais: ${body.tags.join(', ') || '(nenhuma)'}`,
+          clip(body.content, 12000),
+          '',
+          'OUTRAS NOTAS',
+          digestBlock(body.notes),
+        ].join('\n'),
+        config: { systemInstruction: BASE, responseMimeType: 'application/json', responseJsonSchema: SUGGEST_SCHEMA },
+      })
+      return Response.json(JSON.parse(res.text ?? '{}'))
+    }
+
+    if (body.kind === 'assistant') {
+      const history = body.history
+        .slice(-8)
+        .map((t) => `${t.role === 'user' ? 'Usuário' : 'Você'}: ${t.text}`)
+        .join('\n')
+      const res = await ai.models.generateContent({
+        model: MODEL,
+        contents: [
+          `Hoje é ${body.today}.`,
+          ASSISTANT_RULES,
+          '',
+          'NOTAS DO USUÁRIO (as mais relevantes)',
+          digestBlock(body.notes),
+          '',
+          'CONVERSA ATÉ AGORA',
+          history || '(início)',
+          '',
+          `Usuário: ${clip(body.message, 4000)}`,
+        ].join('\n'),
+        config: { systemInstruction: BASE, responseMimeType: 'application/json', responseJsonSchema: ASSISTANT_SCHEMA },
+      })
+      return Response.json(JSON.parse(res.text ?? '{}'))
+    }
+
+    return Response.json({ error: 'tipo desconhecido' }, { status: 400 })
+  } catch (err) {
+    if ((err as { status?: number }).status === 429) {
+      return Response.json(
+        { error: 'Limite gratuito da IA atingido por agora. Tente de novo em alguns minutos.' },
+        { status: 429 },
+      )
+    }
+    console.error('[api/ai]', err)
+    return Response.json({ error: 'A IA não conseguiu responder agora.' }, { status: 502 })
+  }
+}
+
+function digestBlock(notes: NoteDigest[]) {
+  if (!notes.length) return '(nenhuma nota)'
+  return notes
+    .map((n) => {
+      const tags = n.tags.length ? ` #${n.tags.join(' #')}` : ''
+      return `[id:${n.id}] ${n.date} — ${n.title ?? 'sem título'}${tags}\n${n.text}`
+    })
+    .join('\n---\n')
+}
+
+function clip(text: string, max: number) {
+  return text.length > max ? text.slice(0, max) + '\n[...]' : text
+}

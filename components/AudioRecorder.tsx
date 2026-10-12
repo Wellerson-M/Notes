@@ -1,53 +1,39 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Square, X } from 'lucide-react'
-
-const MOCK_TRANSCRIPT_CHUNKS = [
-  'Pensando em como simplificar o ',
-  'processo... ',
-  'Uma ideia seria começar com apenas ',
-  'uma pergunta essencial ao usuário. ',
-  'Isso reduz a fricção e ',
-  'aumenta o engajamento inicial.',
-]
+import { Square } from 'lucide-react'
+import ParticleField from './ParticleField'
+import { useSpeech } from '@/hooks/useSpeech'
 
 interface Props {
   onClose: () => void
   onSave: (transcript: string) => void
+  /** Texto do botão de parar (ex.: "Parar e enviar" no assistente) */
+  stopLabel?: string
 }
 
-export default function AudioRecorder({ onClose, onSave }: Props) {
+export default function AudioRecorder({ onClose, onSave, stopLabel = 'Parar e inserir' }: Props) {
   const [elapsed, setElapsed] = useState(0)
-  const [transcript, setTranscript] = useState('')
-  const [transcriptIndex, setTranscriptIndex] = useState(0)
+  const { listening, text: transcript, error, start, stop } = useSpeech()
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const transcriptRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
+    start()
     timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000)
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [start])
 
-    const addChunk = (i: number) => {
-      if (i >= MOCK_TRANSCRIPT_CHUNKS.length) return
-      setTranscript((t) => t + MOCK_TRANSCRIPT_CHUNKS[i])
-      setTranscriptIndex(i + 1)
-      transcriptRef.current = setTimeout(() => addChunk(i + 1), 1200)
-    }
-    transcriptRef.current = setTimeout(() => addChunk(0), 800)
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-      if (transcriptRef.current) clearTimeout(transcriptRef.current)
-    }
-  }, [])
+  useEffect(() => {
+    if (!listening && timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+  }, [listening])
 
   const formatTime = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`
 
   const handleStop = () => {
+    stop()
     if (timerRef.current) clearInterval(timerRef.current)
-    if (transcriptRef.current) clearTimeout(transcriptRef.current)
-    const fullTranscript = MOCK_TRANSCRIPT_CHUNKS.join('')
-    onSave(fullTranscript)
+    if (transcript.trim()) onSave(transcript.trim())
+    else onClose()
   }
 
   // Generate random-ish waveform heights
@@ -72,6 +58,12 @@ export default function AudioRecorder({ onClose, onSave }: Props) {
         padding: 32,
       }}
     >
+      {/* Campo de partículas reativo à amplitude — complementa a waveform.
+          Retorna null sozinho se os efeitos estiverem desligados em Settings. */}
+      <div style={{ position: 'absolute', inset: 0, zIndex: -1, pointerEvents: 'none' }}>
+        <ParticleField mode="audio" />
+      </div>
+
       {/* Cancel button */}
       <button
         onClick={onClose}
@@ -95,8 +87,8 @@ export default function AudioRecorder({ onClose, onSave }: Props) {
         {waveHeights.map((h, i) => (
           <motion.div
             key={i}
-            animate={{ height: [`${h}%`, `${Math.min(100, h * 1.3)}%`, `${h}%`] }}
-            transition={{
+            animate={!listening ? { height: '10%' } : { height: [`${h}%`, `${Math.min(100, h * 1.3)}%`, `${h}%`] }}
+            transition={!listening ? { duration: 0.3 } : {
               duration: 0.8 + (i % 4) * 0.2,
               repeat: Infinity,
               delay: i * 0.04,
@@ -142,14 +134,21 @@ export default function AudioRecorder({ onClose, onSave }: Props) {
           textAlign: 'left',
         }}
       >
-        {transcript}
-        <motion.span
+        {transcript || (
+          <span className="italic" style={{ color: 'var(--text-muted)' }}>
+            {error ?? (listening ? 'pode falar...' : '')}
+          </span>
+        )}
+        {transcript && error && (
+          <span className="font-sans" style={{ display: 'block', fontSize: 12, color: 'var(--danger)', marginTop: 8 }}>{error}</span>
+        )}
+        {listening && <motion.span
           animate={{ opacity: [1, 0] }}
           transition={{ duration: 0.6, repeat: Infinity, repeatType: 'reverse' }}
           style={{ color: 'var(--accent-amber)' }}
         >
           |
-        </motion.span>
+        </motion.span>}
       </div>
 
       {/* Stop button */}
@@ -174,7 +173,7 @@ export default function AudioRecorder({ onClose, onSave }: Props) {
       </motion.button>
 
       <span style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12, fontWeight: 500 }}>
-        Parar e inserir
+        {stopLabel}
       </span>
     </motion.div>
   )

@@ -1,7 +1,8 @@
 'use client'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Mic, Image, CheckSquare, Link2 } from 'lucide-react'
+import { Mic, Sparkles, CheckSquare, Link2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { newNoteHref } from '@/lib/routes'
 
 interface Props {
   open: boolean
@@ -11,8 +12,8 @@ interface Props {
 }
 
 const options = [
-  { id: 'audio', Icon: Mic, label: 'Áudio', angle: 180, color: 'var(--accent-amber)' },
-  { id: 'photo', Icon: Image, label: 'Foto', angle: 135, color: 'var(--success)' },
+  { id: 'audio', Icon: Mic, label: 'Ditar', angle: 180, color: 'var(--accent-amber)' },
+  { id: 'assistant', Icon: Sparkles, label: 'IA', angle: 135, color: 'var(--accent-amber)' },
   { id: 'task', Icon: CheckSquare, label: 'Tarefa', angle: 45, color: 'var(--accent-gold)' },
   { id: 'link', Icon: Link2, label: 'Link', angle: 0, color: 'var(--text-secondary)' },
 ]
@@ -30,7 +31,7 @@ export default function RadialMenu({ open, onClose, anchorX, anchorY }: Props) {
 
   const handleOption = (id: string) => {
     onClose()
-    router.push(`/note/new?mode=${id}`)
+    router.push(id === 'assistant' ? '/assistant' : newNoteHref(id))
   }
 
   return (

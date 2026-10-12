@@ -2,8 +2,10 @@
 import { useState } from 'react'
 import { motion, AnimatePresence, useDragControls } from 'framer-motion'
 import { X } from 'lucide-react'
-import { mockNotes } from '@/mocks/notes'
+import type { Note } from '@/lib/types'
+import { useNotes } from '@/lib/repo'
 import Link from 'next/link'
+import { noteHref } from '@/lib/routes'
 
 interface Props {
   noteId: string
@@ -11,12 +13,12 @@ interface Props {
   onClose: () => void
 }
 
-function getNeighbors(noteId: string) {
-  const note = mockNotes.find(n => n.id === noteId)
+function getNeighbors(allNotes: Note[], noteId: string) {
+  const note = allNotes.find(n => n.id === noteId)
   const outgoing = (note?.linkedNoteIds ?? [])
-    .map(id => mockNotes.find(n => n.id === id))
-    .filter(Boolean) as typeof mockNotes
-  const incoming = mockNotes.filter(n =>
+    .map(id => allNotes.find(n => n.id === id))
+    .filter(Boolean) as Note[]
+  const incoming = allNotes.filter(n =>
     n.id !== noteId && n.linkedNoteIds?.includes(noteId)
   )
   // Deduplicate
@@ -37,8 +39,9 @@ function radialPosition(index: number, total: number, radius: number) {
 }
 
 export default function NeighborhoodMap({ noteId, open, onClose }: Props) {
-  const currentNote = mockNotes.find(n => n.id === noteId)
-  const neighbors = getNeighbors(noteId)
+  const notes = useNotes() ?? []
+  const currentNote = notes.find(n => n.id === noteId)
+  const neighbors = getNeighbors(notes, noteId)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const dragControls = useDragControls()
 
@@ -182,7 +185,7 @@ export default function NeighborhoodMap({ noteId, open, onClose }: Props) {
                       zIndex: 2,
                     }}
                   >
-                    <Link href={`/note/${neighbor.id}`} onClick={onClose}>
+                    <Link href={noteHref(neighbor.id)} onClick={onClose}>
                       <div
                         className="touch-feedback"
                         style={{

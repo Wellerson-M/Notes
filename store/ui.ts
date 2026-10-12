@@ -1,7 +1,7 @@
 'use client'
 import { create } from 'zustand'
 
-export type SyncStatus = 'ok' | 'syncing' | 'error'
+export type SyncStatus = 'ok' | 'syncing' | 'error' | 'offline' | 'unauthorized'
 export type BottomNavTab = 'timeline' | 'journal' | 'vault' | 'settings'
 export type SavingState = 'idle' | 'saving' | 'saved'
 
@@ -35,7 +35,13 @@ interface UIStore {
 
   reducedMotion: boolean
   setReducedMotion: (v: boolean) => void
+
+  toast: Toast | null
+  showToast: (message: string, action?: Omit<Toast, 'message' | 'id'>) => void
+  hideToast: () => void
 }
+
+export type Toast = { id: number; message: string; actionLabel?: string; onAction?: () => void; persistent?: boolean }
 
 export const useUIStore = create<UIStore>((set) => ({
   activeFilter: 'Tudo',
@@ -67,4 +73,8 @@ export const useUIStore = create<UIStore>((set) => ({
 
   reducedMotion: false,
   setReducedMotion: (v) => set({ reducedMotion: v }),
+
+  toast: null,
+  showToast: (message, action) => set({ toast: { id: Date.now(), message, ...action } }),
+  hideToast: () => set({ toast: null }),
 }))

@@ -4,14 +4,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Lock, Fingerprint } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import NoteCard from '@/components/NoteCard'
-import { mockNotes } from '@/mocks/notes'
+import { useNotes } from '@/lib/repo'
 import { useUIStore } from '@/store/ui'
-
-const vaultNotes = mockNotes.filter((n) => n.inVault)
+import EmptyState from '@/components/EmptyState'
 
 export default function VaultPage() {
   const { vaultLocked, setVaultLocked } = useUIStore()
   const [unlocking, setUnlocking] = useState(false)
+  const vaultNotes = (useNotes() ?? []).filter((n) => n.inVault)
 
   const handleUnlock = () => {
     setUnlocking(true)
@@ -128,12 +128,10 @@ export default function VaultPage() {
             transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
           >
             {vaultNotes.length === 0 ? (
-              <div className="flex flex-col items-center justify-center" style={{ paddingTop: 80 }}>
-                <Lock size={32} style={{ color: 'var(--text-disabled)', marginBottom: 12 }} />
-                <p className="font-serif italic" style={{ color: 'var(--text-muted)', fontSize: 15 }}>
-                  Vault vazio
-                </p>
-              </div>
+              <EmptyState
+                icon={<Lock size={32} style={{ color: 'var(--text-disabled)' }} />}
+                message="vault vazio"
+              />
             ) : (
               <div className="flex flex-col gap-3 px-4 py-4">
                 {vaultNotes.map((note, i) => (

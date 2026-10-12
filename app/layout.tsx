@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter, Newsreader, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
+import Splash from '@/components/Splash'
+import AppBoot from '@/components/AppBoot'
+import Toast from '@/components/Toast'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -56,16 +59,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           dangerouslySetInnerHTML={{
             __html: `
               if ('serviceWorker' in navigator) {
-                window.addEventListener('load', () => {
-                  navigator.serviceWorker.register('/sw.js').catch(() => {})
-                })
+                ${process.env.NODE_ENV === 'production'
+                  ? `window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js?v=${process.env.APP_VERSION}').catch(() => {}) })`
+                  // No dev o cache atrapalharia o hot reload
+                  : "navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => r.unregister()))"}
               }
             `,
           }}
         />
       </head>
       <body style={{ background: 'var(--bg-base)', color: 'var(--text-primary)', fontFamily: 'var(--font-sans)' }}>
+        <Splash />
+        <AppBoot />
         {children}
+        <Toast />
       </body>
     </html>
   )

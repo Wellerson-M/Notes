@@ -3,7 +3,11 @@ import { useState, useRef } from 'react'
 import { motion, PanInfo } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { Pin, Lock, Mic, Image as ImageIcon, CheckSquare, Link2 } from 'lucide-react'
-import { Note, getRelativeDate, formatDuration } from '@/mocks/notes'
+import type { Note } from '@/lib/types'
+import { getRelativeDate, formatDuration } from '@/lib/notes'
+import { notesRepo, removeWithUndo } from '@/lib/repo'
+import { useUIStore } from '@/store/ui'
+import { noteHref } from '@/lib/routes'
 
 interface Props {
   note: Note
@@ -25,9 +29,9 @@ export default function NoteCard({ note, showInkWave = false }: Props) {
       didDrag.current = true
     }
     if (info.offset.x < -60) {
-      // Swipe left: archive/delete reveal
+      void removeWithUndo(note, useUIStore.getState().showToast)
     } else if (info.offset.x > 60) {
-      // Swipe right: pin/vault reveal
+      void notesRepo.update(note.id, { pinned: !note.pinned })
     }
     setSwipeX(0)
     setTimeout(() => { didDrag.current = false }, 100)
@@ -35,13 +39,14 @@ export default function NoteCard({ note, showInkWave = false }: Props) {
 
   const handleTap = () => {
     if (didDrag.current) return
-    router.push(`/note/${note.id}`)
+    router.push(noteHref(note.id))
   }
 
   const previewText = note.content
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/\*\*/g, '')
     .replace(/\*/g, '')
+    .replace(/\[\[([^\]]+)\]\]/g, '$1')
     .replace(/^[-*]\s+\[.\]\s+/gm, '')
     .replace(/^[-*]\s+/gm, '')
     .replace(/^>\s+/gm, '')
@@ -106,7 +111,7 @@ export default function NoteCard({ note, showInkWave = false }: Props) {
           }}
         >
           <Pin size={16} color="#111210" />
-          <span style={{ color: '#111210', fontSize: 12, fontWeight: 600 }}>Fixar</span>
+          <span style={{ color: '#111210', fontSize: 12, fontWeight: 600 }}>{note.pinned ? 'Soltar' : 'Fixar'}</span>
         </div>
       </div>
 
@@ -121,7 +126,6 @@ export default function NoteCard({ note, showInkWave = false }: Props) {
         onDragEnd={handleDragEnd}
         onDrag={(_, info) => setSwipeX(info.offset.x)}
         onClick={handleTap}
-        layoutId={`note-card-${note.id}`}
         className={`noise-card touch-feedback ${inkWave ? 'ink-wave' : ''}`}
         style={{
           background: note.inVault ? 'var(--bg-elevated)' : 'var(--bg-surface)',
@@ -316,7 +320,7 @@ export default function NoteCard({ note, showInkWave = false }: Props) {
                     textDecoration: task.done ? 'line-through' : 'none',
                   }}
                 >
-                  {task.text}
+                  {task.text.replace(/\[\[([^\]]+)\]\]/g, '$1').replace(/\*\*/g, '')}
                 </span>
               </div>
             ))}

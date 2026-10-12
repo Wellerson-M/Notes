@@ -1,7 +1,9 @@
 'use client'
 import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { CheckSquare, Image, Mic, Hash, LayoutTemplate, Sparkles } from 'lucide-react'
+import { AnimatePresence } from 'framer-motion'
+import { CheckSquare, Mic, Hash, LayoutTemplate, Sparkles, Lightbulb } from 'lucide-react'
+import BottomSheet from './BottomSheet'
+import type { TransformAction } from '@/lib/ai-types'
 
 const TEMPLATES = [
   { id: 'meeting', label: 'Reunião', icon: '📋', content: '## Reunião — {data}\n\n**Participantes:**\n\n**Pauta:**\n\n**Decisões:**\n\n**Próximos passos:**\n- [ ] ' },
@@ -12,7 +14,7 @@ const TEMPLATES = [
   { id: 'recipe', label: 'Receita', icon: '🍳', content: '# {nome da receita}\n\n**Porções:** \n**Tempo:** \n\n**Ingredientes:**\n- \n\n**Modo de preparo:**\n1. \n' },
 ]
 
-const AI_ACTIONS = [
+const AI_ACTIONS: { id: TransformAction; label: string; desc: string }[] = [
   { id: 'summarize', label: 'Resumir', desc: 'Condensa o texto mantendo os pontos principais' },
   { id: 'tasks', label: 'Virar tarefas', desc: 'Extrai ações e cria uma lista de tarefas' },
   { id: 'expand', label: 'Expandir', desc: 'Desenvolve as ideias com mais detalhes' },
@@ -24,10 +26,11 @@ const AI_ACTIONS = [
 interface Props {
   onInsertTemplate?: (content: string) => void
   onStartAudio?: () => void
-  onAddPhoto?: () => void
+  onAIAction?: (action: TransformAction) => void
+  onSuggest?: () => void
 }
 
-export default function BottomToolbar({ onInsertTemplate, onStartAudio, onAddPhoto }: Props) {
+export default function BottomToolbar({ onInsertTemplate, onStartAudio, onAIAction, onSuggest }: Props) {
   const [sheet, setSheet] = useState<'template' | 'ai' | null>(null)
 
   const handleTemplate = (content: string) => {
@@ -35,12 +38,14 @@ export default function BottomToolbar({ onInsertTemplate, onStartAudio, onAddPho
     setSheet(null)
   }
 
-  const handleAIAction = (id: string) => {
-    // TODO: integrar com IA real
-    setTimeout(() => {
-      setSheet(null)
-    }, 300)
+  const handleAIAction = (id: TransformAction) => {
+    setSheet(null)
+    onAIAction?.(id)
   }
+
+  /** Templates com {data} já preenchida */
+  const fillTemplate = (content: string) =>
+    content.replace(/\{data\}/g, new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }))
 
   return (
     <>
@@ -54,8 +59,7 @@ export default function BottomToolbar({ onInsertTemplate, onStartAudio, onAddPho
       >
         {[
           { Icon: CheckSquare, label: 'tarefa', onClick: () => onInsertTemplate?.('- [ ] ') },
-          { Icon: Image, label: 'foto', onClick: onAddPhoto },
-          { Icon: Mic, label: 'áudio', onClick: onStartAudio },
+          { Icon: Mic, label: 'ditar', onClick: onStartAudio },
           { Icon: Hash, label: 'tag', onClick: () => onInsertTemplate?.('#') },
           { Icon: LayoutTemplate, label: 'template', onClick: () => setSheet('template') },
           { Icon: Sparkles, label: 'IA', onClick: () => setSheet('ai'), amber: true },
@@ -85,7 +89,7 @@ export default function BottomToolbar({ onInsertTemplate, onStartAudio, onAddPho
               {TEMPLATES.map((t) => (
                 <button
                   key={t.id}
-                  onClick={() => handleTemplate(t.content)}
+                  onClick={() => handleTemplate(fillTemplate(t.content))}
                   className="touch-feedback flex items-center gap-3 rounded-xl px-4 py-3 text-left"
                   style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}
                 >
@@ -100,6 +104,17 @@ export default function BottomToolbar({ onInsertTemplate, onStartAudio, onAddPho
         {sheet === 'ai' && (
           <BottomSheet title="Ações de IA" onClose={() => setSheet(null)}>
             <div className="flex flex-col gap-1 p-4">
+              <button
+                onClick={() => { setSheet(null); onSuggest?.() }}
+                className="touch-feedback flex items-start gap-3 rounded-xl px-4 py-3 text-left"
+                style={{ background: 'var(--accent-amber-soft)', border: '1px solid var(--accent-amber)' }}
+              >
+                <Lightbulb size={16} style={{ color: 'var(--accent-amber)', marginTop: 2, flexShrink: 0 }} />
+                <div>
+                  <div style={{ color: 'var(--text-primary)', fontSize: 14, fontWeight: 500 }}>Sugestões</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 2 }}>Título, tags, notas relacionadas e próximos passos</div>
+                </div>
+              </button>
               {AI_ACTIONS.map((a) => (
                 <button
                   key={a.id}
@@ -118,58 +133,6 @@ export default function BottomToolbar({ onInsertTemplate, onStartAudio, onAddPho
           </BottomSheet>
         )}
       </AnimatePresence>
-    </>
-  )
-}
-
-function BottomSheet({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
-  return (
-    <>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(17,18,16,0.6)',
-          zIndex: 60,
-        }}
-      />
-      <motion.div
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
-        transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
-        style={{
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          background: 'var(--bg-surface)',
-          borderRadius: '20px 20px 0 0',
-          borderTop: '1px solid var(--border-default)',
-          zIndex: 65,
-          maxHeight: '70vh',
-          overflowY: 'auto',
-          paddingBottom: 'env(safe-area-inset-bottom, 16px)',
-        }}
-      >
-        <div
-          className="flex items-center justify-between px-5 py-4"
-          style={{ borderBottom: '1px solid var(--border-subtle)' }}
-        >
-          <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--text-primary)' }}>{title}</span>
-          <button
-            onClick={onClose}
-            style={{ color: 'var(--text-muted)', fontSize: 13, background: 'none', border: 'none', cursor: 'pointer' }}
-          >
-            fechar
-          </button>
-        </div>
-        {children}
-      </motion.div>
     </>
   )
 }
