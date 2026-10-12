@@ -48,6 +48,19 @@ E2E_PASSWORD=<sua APP_PASSWORD> npm run e2e                 # terminal 2 (PowerS
 
 `scripts/e2e-voz.cjs` troca o reconhecimento de voz do navegador por um simulado que se comporta como o Chrome do **Android**: repete a frase inteira a cada resultado e encerra a sessão a cada pausa. O teste confere que o texto chega ao assistente sem repetições e é enviado sozinho quando a fala termina. A IA e o sync são simulados.
 
+## Teste dos lembretes (`npm run e2e:lembretes`)
+
+`scripts/e2e-lembretes.cjs` liga as notificações num Chrome de verdade (inscrição real no push do Google, com perfil temporário: no modo anônimo o Chrome recusa o push) e confere:
+- o Google aceita a mensagem cifrada;
+- o relógio recusa chave errada;
+- o aviso padrão de 15 min sai, o Vault avisa, "sem aviso" e notas de mais tarde não avisam;
+- um aviso escolhido por nota (2 h antes) sai sozinho;
+- chamar o relógio de novo não repete;
+- o service worker mostra a notificação com "Adiar" e "Abrir";
+- a folha "agendar" mostra o padrão e grava "sem aviso".
+
+O Chrome automatizado não recebe push pela rede, então a exibição é testada entregando a mensagem pelo DevTools. Às vezes o Google recusa (410) a inscrição de um Chrome automatizado, e o teste liga de novo (até 3 vezes). **Grava notas: só com o servidor no banco de testes**, como o `npm run e2e`.
+
 ## Roteiro manual no celular (depois de cada deploy importante)
 
 O que o teste automático não alcança: voz, instalação, gestos de toque, câmera, biometria e o "compartilhar" do sistema.
@@ -64,3 +77,4 @@ O que o teste automático não alcança: voz, instalação, gestos de toque, câ
 10. **Vault:** criar a senha, ligar a biometria, sair do app por mais de 1 minuto e voltar. Deve pedir a digital/rosto.
 11. **Foto:** no editor, tocar em "foto", fotografar um papel escrito → "Inserir no fim".
 12. **Compartilhar:** no navegador ou YouTube, compartilhar um link → escolher "Notas". Deve abrir uma nota já salva com o link.
+13. **Lembretes:** Ajustes → Lembretes → "Ligar notificações neste aparelho" → "Mandar uma notificação de teste". Ela deve aparecer no celular e, com o Zepp configurado, no relógio. Depois, agendar uma nota para daqui a 20 min e fechar o app: o aviso deve chegar 15 min antes.

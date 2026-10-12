@@ -102,3 +102,48 @@ async function staleWhileRevalidate(request) {
     .catch(() => hit ?? Response.error())
   return hit ?? network
 }
+
+// ── Lembretes (Web Push) ────────────────────────────────────────────────
+// O servidor manda { title, body, url, tag }; o relógio (Zepp etc.) espelha a notificação do celular.
+self.addEventListener('push', (event) => {
+  let data = {}
+  try { data = event.data ? event.data.json() : {} } catch { data = { body: event.data?.text() } }
+  const title = data.title || 'Notas'
+  event.waitUntil(self.registration.showNotification(title, {
+    body: data.body || '',
+    tag: data.tag || 'lembrete',
+    renotify: true,
+    requireInteraction: false,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/badge-96.png',
+    vibrate: [180, 80, 180],
+    timestamp: Date.now(),
+    data: { url: data.url || '/', title, body: data.body || '', tag: data.tag || 'lembrete' },
+    actions: data.tag === 'teste' ? [] : [{ action: 'snooze', title: 'Adiar 10 min' }, { action: 'open', title: 'Abrir' }],
+  }))
+})
+
+self.addEventListener('notificationclick', (event) => {
+  const n = event.notification
+  const data = n.data || {}
+  n.close()
+  if (event.action === 'snooze') {
+    event.waitUntil(fetch('/api/push/snooze', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: data.title, body: data.body, url: data.url, tag: data.tag, minutes: 10 }),
+    }).catch(() => {}))
+    return
+  }
+  event.waitUntil((async () => {
+    const target = new URL(data.url || '/', self.location.origin).href
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    const win = wins.find((w) => w.url.startsWith(self.location.origin))
+    if (win) {
+      await win.focus()
+      if ('navigate' in win) return win.navigate(target).catch(() => self.clients.openWindow(target))
+    }
+    return self.clients.openWindow(target)
+  })())
+})
