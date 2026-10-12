@@ -180,7 +180,7 @@ Uma nota pode ter `schedule: { date: 'AAAA-MM-DD', time?: 'HH:MM' }`, sempre no 
 
 **Agenda do celular**, por dois caminhos:
 - **Por nota:** "Agenda do celular" gera um `.ics` e abre o compartilhar do sistema (a Agenda Samsung importa). É na hora, mas é uma cópia: editar a nota não atualiza o evento.
-- **Assinatura:** `/api/agenda?k=<chave>` é um feed iCalendar com todas as notas datadas fora do Vault. A chave é `HMAC(APP_PASSWORD, "grafite-calendar-v1")`, porque apps de agenda não mandam cookie (trocar a senha invalida o link). Ajustes → "Agenda do celular" abre o Google Agenda para assinar, e a Agenda Samsung mostra os calendários da conta Google. O Google atualiza assinaturas a cada algumas horas.
+- **Assinatura:** `/api/agenda?k=<chave>` é um feed iCalendar com todas as notas datadas fora do Vault. A chave é `HMAC(APP_PASSWORD, "grafite-calendar-v1")`, porque apps de agenda não mandam cookie (trocar a senha invalida o link). Ajustes → "Agenda do celular" abre o Google Agenda para assinar, e a Agenda Samsung mostra os calendários da conta Google. O Google relê assinaturas no tempo dele (até ~1 dia), e o app do Google Agenda no celular não assina por link: a assinatura é feita no site (de preferência no PC).
 
 ## Modelos e uso da IA (`lib/ai-models.ts`, `lib/usage.ts`)
 

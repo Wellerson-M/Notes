@@ -54,9 +54,11 @@ export default function CalendarLink({ connected }: { connected: boolean }) {
         <Copy size={14} /> Copiar link (outros apps de agenda)
       </button>
       <ol className="font-sans" style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: '18px', paddingLeft: 16, listStyle: 'decimal' }}>
-        <li>No Google Agenda que abrir, confirme “Adicionar agenda”.</li>
-        <li>Na Agenda Samsung: Menu → Gerenciar agendas → ative “Notas” na sua conta Google.</li>
-        <li>O Google atualiza a assinatura sozinho, mas sem pressa (algumas horas). Para levar na hora, use “Agenda do celular” dentro da nota.</li>
+        <li>Faça isto <strong>no computador</strong> (o app do Google Agenda no celular não assina por link): abra o app aqui no PC e toque no botão acima, ou copie o link e, em calendar.google.com, vá em “Outras agendas” → “+” → “Do URL”.</li>
+        <li>No celular, no app Google Agenda: Configurações → “Notas” → ative “Sincronizar”.</li>
+        <li>Na Agenda Samsung: menu ☰ → engrenagem/“Gerenciar agendas” → na conta Google, ative “Notas”.</li>
+        <li>Para ser avisado: no site do Google Agenda, nas configurações da agenda “Notas”, defina as notificações de evento (ex.: 15 min antes).</li>
+        <li>O Google relê a assinatura no tempo dele (pode levar até um dia). Para levar um evento na hora, use “Agenda do celular” dentro da nota.</li>
       </ol>
       <p className="font-sans" style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: '16px' }}>
         O link é secreto: quem tiver ele vê os títulos e textos das notas com data (o Vault nunca entra). Trocar a senha do app invalida o link.
