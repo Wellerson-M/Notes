@@ -62,6 +62,9 @@ export type UsageDoc = {
   inputTokens: number
   outputTokens: number
   lastLimitedAt?: number
+  /** Último erro (status e mensagem do Google), para entender falhas como "sobrecarregada" */
+  lastError?: string
+  lastErrorAt?: number
 }
 
 export async function usageCollection(): Promise<Collection<UsageDoc>> {

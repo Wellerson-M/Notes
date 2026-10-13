@@ -3,15 +3,16 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Mic, ArrowUp, Sparkles, FilePlus, FileText, ExternalLink, Check } from 'lucide-react'
+import { Mic, ArrowUp, Sparkles, FilePlus, FileText, ExternalLink, Check, PencilLine, Trash2 } from 'lucide-react'
 import type { AssistantAction, ChatTurn } from '@/lib/ai-types'
 import type { Note } from '@/lib/types'
 import { ai, AIError, AI_LOGIN_MESSAGE } from '@/lib/ai'
 import ConnectInline from '@/components/ConnectInline'
-import { notesRepo, useNotes } from '@/lib/repo'
+import { notesRepo, removeWithUndo, useNotes } from '@/lib/repo'
 import { useUIStore } from '@/store/ui'
 import { renderMarkdown } from '@/components/MarkdownEditor'
 import AudioRecorder from '@/components/AudioRecorder'
+import { getVoiceAutoSend } from '@/hooks/useSpeech'
 import SwipeBackWrapper from '@/components/SwipeBackWrapper'
 import { AIThinking } from '@/components/AISheets'
 import { noteHref } from '@/lib/routes'
@@ -100,7 +101,35 @@ export default function AssistantClient({ initialQuery }: { initialQuery: string
       await notesRepo.update(target.id, { content: target.content.replace(/\s*$/, '') + sep + '\n' + action.content })
       setApplied((a) => ({ ...a, [key]: true }))
       showToast(`Adicionado em “${target.title ?? 'sem título'}”`)
+      return
     }
+    if (action.type === 'edit_note') {
+      const target = await notesRepo.get(action.noteId)
+      if (!target) { showToast('Essa nota não existe mais'); return }
+      const next = applyEdit(target.content, action)
+      if (next === null) { showToast('Não achei esse trecho na nota — ela mudou? Peça de novo.'); return }
+      // A versão de antes fica no histórico (menu da nota → Versões anteriores)
+      await notesRepo.checkpoint(target.id)
+      await notesRepo.update(target.id, { content: next, ...(action.title ? { title: action.title } : {}) })
+      setApplied((a) => ({ ...a, [key]: true }))
+      showToast(`Alterado em “${action.title || target.title || 'sem título'}”`, { actionLabel: 'abrir', onAction: () => router.push(noteHref(target.id)) })
+      return
+    }
+    if (action.type === 'delete_note') {
+      const target = await notesRepo.get(action.noteId)
+      if (!target) { showToast('Essa nota já foi apagada'); return }
+      await removeWithUndo(target, showToast)
+      setApplied((a) => ({ ...a, [key]: true }))
+    }
+  }
+
+  /** Aplica de uma vez as ações pendentes de uma resposta (menos abrir e apagar, que pedem um toque cada) */
+  const applyAll = async (m: Message) => {
+    const pending = (m.actions ?? []).map((a, i) => ({ a, key: `${m.id}-${i}` }))
+      .filter(({ a, key }) => !applied[key] && a.type !== 'open_note' && a.type !== 'delete_note')
+    if (pending.every(({ a }) => a.type === 'create_note')) return applyAllCreates(m)
+    // Em sequência: várias edições na mesma nota precisam ver a anterior aplicada
+    for (const { a, key } of pending) await applyAction(key, a)
   }
 
   /** Cria de uma vez todas as notas propostas numa resposta (ex.: receita + lista de compras, já ligadas) */
@@ -225,13 +254,13 @@ export default function AssistantClient({ initialQuery }: { initialQuery: string
                       />
                     )
                   })}
-                  {(m.actions?.filter((a, i) => a.type === 'create_note' && !applied[`${m.id}-${i}`]).length ?? 0) > 1 && (
+                  {(m.actions?.filter((a, i) => a.type !== 'open_note' && a.type !== 'delete_note' && !applied[`${m.id}-${i}`]).length ?? 0) > 1 && (
                     <button
-                      onClick={() => void applyAllCreates(m)}
+                      onClick={() => void applyAll(m)}
                       className="touch-feedback flex items-center justify-center gap-2 rounded-xl py-2.5 font-sans"
                       style={{ background: 'var(--accent-amber)', color: 'var(--on-accent)', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}
                     >
-                      <FilePlus size={14} /> Criar todas (já ligadas entre si)
+                      <Check size={14} /> {m.actions?.every((a) => a.type === 'create_note') ? 'Criar todas (já ligadas entre si)' : 'Aplicar tudo'}
                     </button>
                   )}
                 </div>
@@ -312,8 +341,8 @@ export default function AssistantClient({ initialQuery }: { initialQuery: string
         <AnimatePresence>
           {voiceOpen && (
             <AudioRecorder
-              stopLabel="Enviar agora"
-              autoSend
+              stopLabel="Enviar"
+              autoSend={getVoiceAutoSend()}
               onClose={() => setVoiceOpen(false)}
               onSave={(t) => { setVoiceOpen(false); void send(t) }}
             />
@@ -325,6 +354,32 @@ export default function AssistantClient({ initialQuery }: { initialQuery: string
 }
 
 type CreateAction = Extract<AssistantAction, { type: 'create_note' }>
+type EditAction = Extract<AssistantAction, { type: 'edit_note' }>
+
+/**
+ * Aplica a troca proposta pela IA. O trecho tem que existir: primeiro exato; depois ignorando
+ * espaços nas pontas e maiúsculas (a IA às vezes copia a linha um pouco diferente).
+ * Devolve null se não achar.
+ */
+function applyEdit(content: string, action: EditAction): string | null {
+  if (!action.find) return action.content ?? (action.title ? content : null)
+  const replace = action.replace ?? ''
+  const swap = (idx: number, len: number) => {
+    // Apagar uma linha inteira leva a quebra junto (não deixa linha vazia no meio da lista)
+    const lineStart = content.lastIndexOf('\n', idx - 1) + 1
+    const nl = content.indexOf('\n', idx + len)
+    const lineEnd = nl === -1 ? content.length : nl
+    const wholeLine = content.slice(lineStart, lineEnd).trim() === content.slice(idx, idx + len).trim()
+    if (!replace.trim() && wholeLine) return content.slice(0, lineStart) + content.slice(nl === -1 ? lineEnd : nl + 1)
+    return content.slice(0, idx) + replace + content.slice(idx + len)
+  }
+  const exact = content.indexOf(action.find)
+  if (exact !== -1) return swap(exact, action.find.length)
+  const needle = action.find.trim().toLowerCase()
+  if (!needle) return null
+  const loose = content.toLowerCase().indexOf(needle)
+  return loose === -1 ? null : swap(loose, needle.length)
+}
 
 /** Títulos de lista: se a IA mandar "- item" num deles, vira checklist "- [ ] item" */
 const LIST_TITLE = /lista|compras|mercado|checklist|levar|mala|tarefas|to-?do|pend[eê]ncias|afazeres/i
@@ -373,8 +428,22 @@ function ActionCard({ action, done, target, onApply }: {
 }) {
   if ('noteId' in action && !target) return null // a IA citou uma nota que não existe
 
+  const danger = action.type === 'delete_note'
   const { Icon, label, button, preview } =
-    action.type === 'create_note'
+    action.type === 'edit_note'
+      ? {
+          Icon: PencilLine,
+          label: action.title && !action.find && !action.content
+            ? `Renomear “${target?.title ?? 'sem título'}” para “${action.title}”`
+            : `Alterar “${target?.title ?? 'sem título'}”`,
+          button: 'Alterar',
+          preview: action.find
+            ? `antes: ${action.find.trim()}\n\ndepois: ${action.replace?.trim() || '(apagar)'}`
+            : action.content ?? '',
+        }
+    : action.type === 'delete_note'
+      ? { Icon: Trash2, label: `Apagar “${target?.title ?? 'sem título'}”`, button: 'Apagar', preview: '' }
+    : action.type === 'create_note'
       ? {
           Icon: FilePlus,
           label: `Nova nota: ${action.title || 'sem título'}${scheduleFrom(action) ? ` · ${scheduleLabel(scheduleFrom(action)!)}` : ''}`,
@@ -388,10 +457,10 @@ function ActionCard({ action, done, target, onApply }: {
   return (
     <div
       className="noise-card rounded-2xl px-4 py-3"
-      style={{ background: 'var(--bg-surface)', border: `1px solid ${done ? 'var(--border-subtle)' : 'rgba(var(--accent-rgb), 0.35)'}` }}
+      style={{ background: 'var(--bg-surface)', border: `1px solid ${done ? 'var(--border-subtle)' : danger ? 'var(--danger)' : 'rgba(var(--accent-rgb), 0.35)'}` }}
     >
       <div className="flex items-center gap-2">
-        <Icon size={14} style={{ color: 'var(--accent-amber)', flexShrink: 0 }} />
+        <Icon size={14} style={{ color: danger ? 'var(--danger)' : 'var(--accent-amber)', flexShrink: 0 }} />
         <span className="font-sans font-medium flex-1" style={{ fontSize: 13, color: 'var(--text-primary)' }}>{label}</span>
         <button
           onClick={onApply}
@@ -400,7 +469,7 @@ function ActionCard({ action, done, target, onApply }: {
           style={{
             fontSize: 12, fontWeight: 600, borderRadius: 8, padding: '5px 12px', flexShrink: 0,
             cursor: done ? 'default' : 'pointer',
-            background: done ? 'transparent' : 'var(--accent-amber)',
+            background: done ? 'transparent' : danger ? 'var(--danger)' : 'var(--accent-amber)',
             color: done ? 'var(--success)' : 'var(--on-accent)',
             border: 'none',
           }}

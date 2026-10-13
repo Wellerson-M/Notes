@@ -33,8 +33,22 @@ const ERRORS: Record<string, string> = {
   'audio-capture': 'Nenhum microfone encontrado.',
 }
 
-/** Silêncio depois da fala que encerra a escuta quando `endOnSilence` está ligado */
-const SILENCE_MS = 1200
+/**
+ * Silêncio depois da fala que encerra a escuta quando `endOnSilence` está ligado. Com 1,2s o
+ * assistente cortava a pessoa no meio da frase (uma pausa para pensar já enviava).
+ */
+const SILENCE_MS = 2800
+
+const AUTOSEND_KEY = 'grafite-voice-autosend'
+
+/** Assistente envia sozinho quando a pessoa para de falar? (Ajustes; padrão: não, envia no botão) */
+export function getVoiceAutoSend(): boolean {
+  try { return localStorage.getItem(AUTOSEND_KEY) === '1' } catch { return false }
+}
+
+export function setVoiceAutoSend(on: boolean) {
+  try { localStorage.setItem(AUTOSEND_KEY, on ? '1' : '0') } catch { /* modo privado */ }
+}
 
 const words = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w\s]/g, '').split(/\s+/).filter(Boolean)
 
@@ -79,19 +93,25 @@ export function useSpeech({ endOnSilence = false }: { endOnSilence?: boolean } =
   /** Texto confirmado de sessões anteriores (a escuta reinicia várias vezes) */
   const committedRef = useRef('')
   const sessionRef = useRef('')
+  /** Resultados da sessão atual a ignorar (o que foi falado antes de tocar em "apagar") */
+  const skipRef = useRef(0)
+  const seenRef = useRef(0)
   const silenceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const clearSilence = () => { if (silenceRef.current) { clearTimeout(silenceRef.current); silenceRef.current = null } }
 
-  const start = useCallback(() => {
+  /** `keep`: continua depois do que já foi dito (em vez de começar do zero) */
+  const start = useCallback((opts?: { keep?: boolean }) => {
     const Ctor = getRecognitionCtor()
     if (!Ctor) {
       setError('Seu navegador não tem ditado por voz. Use o Chrome.')
       return
     }
     setError(null)
-    committedRef.current = ''
+    if (!opts?.keep) committedRef.current = ''
     sessionRef.current = ''
+    skipRef.current = 0
+    seenRef.current = 0
     const rec = new Ctor()
     rec.lang = 'pt-BR'
     // No Android, o modo contínuo repete frases; lá é uma frase por sessão, reiniciando sozinho
@@ -102,7 +122,9 @@ export function useSpeech({ endOnSilence = false }: { endOnSilence?: boolean } =
       // Remonta a sessão inteira a cada evento (o resultIndex do Android não é confiável)
       const finals: string[] = []
       const pending: string[] = []
-      for (let i = 0; i < e.results.length; i++) {
+      seenRef.current = e.results.length
+      setError(null) // um "não ouvi nada" anterior não vale mais
+      for (let i = skipRef.current; i < e.results.length; i++) {
         const r = e.results[i]
         ;(r.isFinal ? finals : pending).push(r[0].transcript)
       }
@@ -132,6 +154,8 @@ export function useSpeech({ endOnSilence = false }: { endOnSilence?: boolean } =
       if (!endOnSilence || !wantRef.current) clearSilence()
       committedRef.current = joinSpeech(committedRef.current, sessionRef.current)
       sessionRef.current = ''
+      skipRef.current = 0
+      seenRef.current = 0
       setFinalText(committedRef.current)
       setInterim('')
       if (wantRef.current) {
@@ -152,11 +176,17 @@ export function useSpeech({ endOnSilence = false }: { endOnSilence?: boolean } =
     recRef.current?.stop()
   }, [])
 
+  /** Apaga o que foi dito até agora e continua ouvindo */
   const reset = useCallback(() => {
+    clearSilence()
     committedRef.current = ''
     sessionRef.current = ''
+    // A sessão em andamento ainda devolveria os resultados antigos no próximo evento
+    skipRef.current = seenRef.current
     setFinalText('')
     setInterim('')
+    // Recomeça a sessão: o que ainda estava sendo reconhecido também é descartado
+    if (wantRef.current) recRef.current?.abort()
   }, [])
 
   useEffect(() => () => { wantRef.current = false; clearSilence(); recRef.current?.abort() }, [])

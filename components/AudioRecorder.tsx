@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Square } from 'lucide-react'
+import { Square, RotateCcw } from 'lucide-react'
 import ParticleField from './ParticleField'
 import { useSpeech } from '@/hooks/useSpeech'
 
@@ -16,7 +16,7 @@ interface Props {
 
 export default function AudioRecorder({ onClose, onSave, stopLabel = 'Parar e inserir', autoSend = false }: Props) {
   const [elapsed, setElapsed] = useState(0)
-  const { listening, text: transcript, error, start, stop } = useSpeech({ endOnSilence: autoSend })
+  const { listening, text: transcript, error, start, stop, reset } = useSpeech({ endOnSilence: autoSend })
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const delivered = useRef(false)
   const startedRef = useRef(false)
@@ -165,12 +165,28 @@ export default function AudioRecorder({ onClose, onSave, stopLabel = 'Parar e in
         </motion.span>}
       </div>
 
-      {/* Stop button */}
+      {/* Apagar (recomeça a fala) · parar */}
+      <div className="flex items-center justify-center" style={{ marginTop: 48, gap: 28, width: '100%' }}>
+      <button
+        onClick={reset}
+        disabled={!transcript}
+        aria-label="Apagar o que eu falei"
+        className="touch-feedback flex flex-col items-center gap-1 font-sans"
+        style={{
+          width: 64, background: 'none', border: 'none', cursor: transcript ? 'pointer' : 'default',
+          color: 'var(--text-secondary)', opacity: transcript ? 1 : 0.35, fontSize: 11, fontWeight: 500,
+        }}
+      >
+        <span style={{ width: 44, height: 44, borderRadius: '50%', border: '1px solid var(--border-strong)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <RotateCcw size={18} />
+        </span>
+        apagar
+      </button>
       <motion.button
         onClick={handleStop}
         whileTap={{ scale: 0.92 }}
+        aria-label={stopLabel}
         style={{
-          marginTop: 48,
           width: 72,
           height: 72,
           borderRadius: '50%',
@@ -185,6 +201,8 @@ export default function AudioRecorder({ onClose, onSave, stopLabel = 'Parar e in
       >
         <Square size={24} fill="currentColor" style={{ color: 'var(--on-accent)' }} />
       </motion.button>
+      <div style={{ width: 64 }} />
+      </div>
 
       <span style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12, fontWeight: 500 }}>
         {stopLabel}

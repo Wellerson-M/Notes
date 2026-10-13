@@ -19,6 +19,9 @@ const EMBED_DIMS = 256
 const MAX_IMAGE_B64 = 4_000_000
 const MAX_EMBED_TEXTS = 100
 
+/** Folga para as tentativas (principal, repetição e reserva) caberem numa chamada só */
+export const maxDuration = 60
+
 const BASE = `Você é a IA do "Grafite Notas", um app pessoal de anotações. Responda sempre em português do Brasil,
 de forma direta e calorosa, sem floreios. Use markdown simples (títulos ##, listas, **negrito**, tarefas "- [ ] ").`
 
@@ -65,10 +68,12 @@ const ASSISTANT_SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          type: { type: 'string', enum: ['create_note', 'append_to_note', 'open_note'] },
+          type: { type: 'string', enum: ['create_note', 'append_to_note', 'edit_note', 'delete_note', 'open_note'] },
           noteId: { type: 'string' },
-          title: { type: 'string' },
-          content: { type: 'string' },
+          title: { type: 'string', description: 'create_note: título; edit_note: novo título, só se for para renomear' },
+          content: { type: 'string', description: 'create_note/append_to_note: o texto; edit_note: o conteúdo NOVO inteiro, só quando a mudança for grande demais para find/replace' },
+          find: { type: 'string', description: 'edit_note: trecho EXATO copiado da nota (uma linha inteira, de preferência) a ser trocado' },
+          replace: { type: 'string', description: 'edit_note: o que entra no lugar de find; vazio = apagar o trecho' },
           tags: { type: 'array', items: { type: 'string' } },
           date: { type: 'string', description: 'só em create_note com data: AAAA-MM-DD' },
           time: { type: 'string', description: 'só se houver hora: HH:MM (24h)' },
@@ -81,12 +86,22 @@ const ASSISTANT_SCHEMA = {
 }
 
 const ASSISTANT_RULES = `Você é o assistente das notas do usuário. Entenda o pedido em linguagem natural
-(pode vir de voz, com erros de transcrição) e:
-- se for uma PERGUNTA sobre as notas, responda com base nelas e cite os ids em noteIds;
-- se ele quer ANOTAR algo novo, proponha "create_note" com título, conteúdo bem organizado e tags;
-- se quer ACRESCENTAR algo a uma nota existente (ex.: "põe leite na lista de compras"), proponha "append_to_note" com o noteId certo e só o trecho novo;
-- se quer ABRIR ou achar uma nota, proponha "open_note";
-- se for conversa, ideia ou pedido de sugestão, responda e, se fizer sentido, proponha salvar como nota.
+(costuma vir de voz: espere erros de transcrição, frases soltas e palavras trocadas; deduza a intenção
+pelo sentido e pela conversa até agora — "ela", "essa lista", "a de ontem" se referem ao que acabou de ser falado). Então:
+- PERGUNTA sobre as notas: responda com base nelas e cite os ids em noteIds;
+- ANOTAR algo novo: "create_note" com título, conteúdo bem organizado e tags;
+- ACRESCENTAR a uma nota existente ("põe leite na lista de compras"): "append_to_note" com o noteId certo e só o trecho novo;
+- MUDAR, CORRIGIR, TROCAR, MARCAR COMO FEITO ou TIRAR algo de uma nota ("tira o leite", "muda a reunião pra 15h", "marca o pão como comprado", "renomeia para X"): "edit_note".
+  Use "find" com o trecho EXATO como está no texto da nota (copie a linha inteira) e "replace" com a versão nova; para tirar, "replace" vazio.
+  Marcar tarefa como feita = trocar "- [ ] item" por "- [x] item". Várias mudanças na mesma nota = várias ações edit_note.
+  Só use "content" (reescrever tudo) quando o usuário pedir para reorganizar/reescrever a nota inteira. Para renomear, use "title".
+- APAGAR uma nota inteira ("apaga a nota X", "pode excluir a lista antiga"): "delete_note" (o usuário confirma antes);
+- ABRIR ou achar uma nota: "open_note";
+- conversa, ideia ou pedido de sugestão: responda e, se fizer sentido, proponha salvar como nota.
+Prefira agir: se o pedido é claro, proponha a ação sem perguntar. Pergunte só quando houver duas notas igualmente
+prováveis ou faltar algo essencial. Na resposta, diga em uma frase o que vai ser feito.
+"edit_note" com "find" só em notas cujo texto aparece abaixo (copie o trecho de lá). Notas do ÍNDICE (só título)
+podem receber "append_to_note", "open_note", "delete_note" ou renomear com "title". Nunca invente ids.
 
 Regras de conteúdo:
 - LISTAS de coisas a fazer, comprar, levar ou checar (compras, ingredientes a comprar, tarefas, mala) são SEMPRE checklist, uma por linha: "- [ ] item". Nunca use "- item" nesses casos.
@@ -177,8 +192,11 @@ export async function POST(request: Request) {
           `Hoje é ${body.today}${body.todayIso ? ` (${body.todayIso})` : ''}.`,
           ASSISTANT_RULES,
           '',
-          'NOTAS DO USUÁRIO (as mais relevantes)',
+          'NOTAS DO USUÁRIO (as mais relevantes; as primeiras vêm com o texto completo)',
           digestBlock(body.notes),
+          '',
+          'ÍNDICE DAS OUTRAS NOTAS (só id e título)',
+          (Array.isArray(body.index) ? body.index : []).slice(0, 300).map((n) => `[id:${n.id}] ${clip(String(n.title), 80)}`).join('\n') || '(nenhuma)',
           '',
           'CONVERSA ATÉ AGORA',
           history || '(início)',
@@ -214,7 +232,7 @@ export async function POST(request: Request) {
         model: EMBED_MODEL,
         contents: texts,
         config: { taskType: body.task === 'query' ? 'RETRIEVAL_QUERY' : 'RETRIEVAL_DOCUMENT', outputDimensionality: EMBED_DIMS },
-      }).catch((err) => { void recordUsage(EMBED_MODEL, outcomeOf(err)); throw err })
+      }).catch((err) => { void recordUsage(EMBED_MODEL, outcomeOf(err), undefined, errorLabel(err)); throw err })
       void recordUsage(EMBED_MODEL, 'ok')
       return Response.json({ vectors: (res.embeddings ?? []).map((e) => normalize(e.values ?? [])) })
     }
@@ -241,6 +259,9 @@ export async function POST(request: Request) {
         { status: 429 },
       )
     }
+    if (err instanceof Timeout) {
+      return Response.json({ error: 'A IA demorou demais para responder. Tente de novo.' }, { status: 504 })
+    }
     if (overloaded(err)) {
       return Response.json(
         { error: 'A IA do Google está sobrecarregada agora. Tente de novo em instantes.' },
@@ -252,51 +273,59 @@ export async function POST(request: Request) {
   }
 }
 
-/** Tempo máximo do modelo principal antes de desistir e ir para o reserva */
-const PRIMARY_TIMEOUT_MS = 20_000
+/** Tempo máximo de cada tentativa antes de desistir e ir para a próxima */
+const ATTEMPT_TIMEOUT_MS = 15_000
 
 class Timeout extends Error {}
 
-const overloaded = (err: unknown) =>
-  err instanceof Timeout || [500, 503].includes((err as { status?: number }).status ?? 0)
+const statusOf = (err: unknown) => (err as { status?: number }).status ?? 0
+
+const overloaded = (err: unknown) => [500, 503].includes(statusOf(err))
 
 /** No plano grátis cada modelo tem a sua cota: limite (429) no principal também vale tentar o reserva */
-const retryable = (err: unknown) => overloaded(err) || (err as { status?: number }).status === 429
+const retryable = (err: unknown) => err instanceof Timeout || overloaded(err) || statusOf(err) === 429
 
-const outcomeOf = (err: unknown) => ((err as { status?: number }).status === 429 ? 'limited' : 'error') as Outcome
+const outcomeOf = (err: unknown) => (statusOf(err) === 429 ? 'limited' : 'error') as Outcome
+
+/** Resumo do erro para o contador de uso (Ajustes → IA), sem conteúdo das notas */
+const errorLabel = (err: unknown) =>
+  err instanceof Timeout ? 'demorou demais' : `${statusOf(err) || '?'} ${String((err as Error)?.message ?? '').slice(0, 120)}`
 
 /**
- * Gerador do pedido: tenta o modelo principal; se o Google estiver sobrecarregado (500/503), a
- * cota do modelo acabar (429) ou ele demorar demais, tenta o reserva uma vez. Cada tentativa
- * entra no contador de uso (Ajustes → IA).
+ * Gerador do pedido. O "sobrecarregado" (500/503) do Google costuma durar segundos, então:
+ *  1. tenta o modelo principal;
+ *  2. se ele sobrecarregar, tenta o MESMO modelo de novo depois de 1s (normalmente passa);
+ *  3. se ainda falhar, estourar a cota (429) ou demorar demais, tenta o reserva.
+ * Cada tentativa tem tempo máximo e entra no contador de uso.
  */
 function generator(ai: GoogleGenAI, [primary, backup]: [string, string]) {
-  return async (params: Omit<GenerateContentParameters, 'model'>) => {
+  const attempt = async (model: string, params: Omit<GenerateContentParameters, 'model'>) => {
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), PRIMARY_TIMEOUT_MS)
+    const timer = setTimeout(() => controller.abort(), ATTEMPT_TIMEOUT_MS)
     try {
-      const res = await ai.models.generateContent({
-        ...params,
-        model: primary,
-        config: { ...params.config, abortSignal: controller.signal },
-      })
-      void recordUsage(primary, 'ok', res.usageMetadata)
+      const res = await ai.models.generateContent({ ...params, model, config: { ...params.config, abortSignal: controller.signal } })
+      void recordUsage(model, 'ok', res.usageMetadata)
       return res
     } catch (err) {
-      const error = controller.signal.aborted ? new Timeout('o modelo principal demorou demais') : err
-      void recordUsage(primary, error instanceof Timeout ? 'error' : outcomeOf(error))
-      if (!retryable(error) || backup === primary) throw error
-      if (!controller.signal.aborted) await new Promise((r) => setTimeout(r, 800))
-      try {
-        const res = await ai.models.generateContent({ ...params, model: backup })
-        void recordUsage(backup, 'ok', res.usageMetadata)
-        return res
-      } catch (err2) {
-        void recordUsage(backup, outcomeOf(err2))
-        throw err2
-      }
+      const error = controller.signal.aborted ? new Timeout(`${model} demorou demais`) : err
+      void recordUsage(model, outcomeOf(error), undefined, errorLabel(error))
+      throw error
     } finally {
       clearTimeout(timer)
+    }
+  }
+
+  return async (params: Omit<GenerateContentParameters, 'model'>) => {
+    try {
+      return await attempt(primary, params)
+    } catch (err) {
+      if (!retryable(err)) throw err
+      if (overloaded(err)) {
+        await new Promise((r) => setTimeout(r, 1000))
+        try { return await attempt(primary, params) } catch (err2) { if (!retryable(err2)) throw err2 }
+      }
+      if (backup === primary) throw err
+      return attempt(backup, params)
     }
   }
 }

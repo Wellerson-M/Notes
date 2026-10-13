@@ -53,7 +53,7 @@ export function ModelPicker() {
   )
 }
 
-type UsageRow = { day: string; model: string; requests: number; limited: number; errors: number; inputTokens: number; outputTokens: number; lastLimitedAt?: number }
+type UsageRow = { day: string; model: string; requests: number; limited: number; errors: number; inputTokens: number; outputTokens: number; lastLimitedAt?: number; lastError?: string; lastErrorAt?: number }
 type ModelInfo = { id: string; label: string; dailyLimit: number }
 type Report = {
   today: string
@@ -87,6 +87,7 @@ export function AIUsage({ connected }: { connected: boolean }) {
   const weekTotal = report.week.reduce((s, r) => s + r.requests, 0)
   const weekTokens = report.week.reduce((s, r) => s + r.inputTokens + r.outputTokens, 0)
   const lastLimit = report.todayByModel.map((r) => r.lastLimitedAt ?? 0).sort((a, b) => b - a)[0]
+  const lastError = report.todayByModel.filter((r) => r.lastError).sort((a, b) => (b.lastErrorAt ?? 0) - (a.lastErrorAt ?? 0))[0]
 
   return (
     <div className="flex flex-col gap-3 px-5 py-4" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
@@ -116,6 +117,7 @@ export function AIUsage({ connected }: { connected: boolean }) {
       <p className="font-sans" style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: '16px' }}>
         Últimos 7 dias: {weekTotal} pedidos · {fmtNum(weekTokens)} tokens.
         {lastLimit ? ` Último limite atingido às ${new Date(lastLimit).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.` : ''}
+        {lastError ? ` Última falha (${lastError.model}, ${new Date(lastError.lastErrorAt ?? 0).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}): ${lastError.lastError}.` : ''}
         {' '}A cota zera às 4h/5h (horário de Brasília). Os limites são estimativas: o Google não informa quanto resta, e quando um modelo esgota o app troca sozinho pelo outro.
       </p>
     </div>

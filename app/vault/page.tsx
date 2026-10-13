@@ -11,6 +11,7 @@ import * as vault from '@/lib/vault'
 import { useUIStore } from '@/store/ui'
 import EmptyState from '@/components/EmptyState'
 import { newNoteHref } from '@/lib/routes'
+import PasswordChange from '@/components/PasswordChange'
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
@@ -255,6 +256,9 @@ export default function VaultPage() {
                   </span>
                 </button>
               )}
+              <div className="rounded-xl overflow-hidden" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+                <PasswordChange kind="vault" />
+              </div>
               <p className="flex items-center gap-1.5 font-sans px-1" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                 <ShieldCheck size={12} /> cifrado no aparelho · tranca sozinho 1 min fora do app
               </p>
