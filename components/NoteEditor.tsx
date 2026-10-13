@@ -1,8 +1,8 @@
 'use client'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MoreVertical, Pin, Lock, Unlock, FileText, Trash2, BookOpen, GitFork, History, CalendarDays, BellOff } from 'lucide-react'
+import { MoreVertical, Pin, Lock, Unlock, FileText, Trash2, BookOpen, GitFork, History, CalendarDays, BellOff, Check } from 'lucide-react'
 import type { Note } from '@/lib/types'
 import type { Suggestions, TransformAction } from '@/lib/ai-types'
 import { notesRepo, removeWithUndo, useNotes, VaultLockedError } from '@/lib/repo'
@@ -11,10 +11,13 @@ import { compressImage } from '@/lib/image'
 import * as vault from '@/lib/vault'
 import { useUIStore } from '@/store/ui'
 import { FLUSH_EVENT } from '@/lib/updates'
-import MarkdownEditor from './MarkdownEditor'
+import MarkdownEditor, { type EditorHandle } from './MarkdownEditor'
 import BottomToolbar from './BottomToolbar'
 import SyncIndicator from './SyncIndicator'
-import AudioRecorder from './AudioRecorder'
+import DictationBar from './DictationBar'
+import RelatedNotes from './RelatedNotes'
+import TagSuggest from './TagSuggest'
+import { addRelatedLink } from '@/lib/related'
 import BacklinksSection from './BacklinksSection'
 import NeighborhoodMap from './NeighborhoodMap'
 import SwipeBackWrapper from './SwipeBackWrapper'
@@ -74,6 +77,7 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
   const [schedule, setSchedule] = useState<Schedule | undefined>(note?.schedule ?? initial?.schedule)
   const [scheduleOpen, setScheduleOpen] = useState(false)
   const [newTag, setNewTag] = useState('')
+  const [tagFocused, setTagFocused] = useState(false)
   const [readingMode, setReadingMode] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [audioOpen, setAudioOpen] = useState(isNew && mode === 'audio')
@@ -83,6 +87,9 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
   const [openedAt] = useState(() => new Date().toISOString())
   const [suggestions, setSuggestions] = useState<{ loading: boolean; data?: Suggestions; error?: string } | null>(null)
   const [versionsOpen, setVersionsOpen] = useState(false)
+  /** Teclado aberto no texto: a barra de baixo vira a de atalhos e aparece "Concluir" no topo */
+  const [editing, setEditing] = useState(false)
+  const editorRef = useRef<EditorHandle>(null)
 
   // Refs guardam o estado mais recente para o salvamento debounced e o flush ao sair
   const noteIdRef = useRef<string | null>(note?.id ?? null)
@@ -167,10 +174,20 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
   const handleTitleChange = (val: string) => { setTitle(val); scheduleSave({ title: val }) }
   const updateTags = (next: string[]) => { setTags(next); scheduleSave({ tags: next }) }
   const updateSchedule = (next: Schedule | undefined) => { setSchedule(next); scheduleSave({ schedule: next }) }
+  /** Entra no ponto onde o cursor estava (ou no fim, se ainda não houve edição) */
+  const insertAtCursor = (text: string, block = false) => {
+    if (editorRef.current) editorRef.current.insert(text, { block })
+    else appendContent(text)
+  }
   const appendContent = (extra: string) => {
     const base = draftRef.current.content
     handleContentChange(base + (base.trim() ? '\n\n' : '') + extra)
   }
+
+  /** Liga outra nota pela linha "Relacionadas:" no fim — nunca no meio do texto */
+  const linkNote = (noteTitle: string) => handleContentChange(addRelatedLink(draftRef.current.content, noteTitle))
+
+  const draftForLinks = useMemo(() => ({ id: noteId ?? '', title: title || null, content, tags }), [noteId, title, content, tags])
 
   const addTag = (tag: string) => {
     const t = tag.replace(/[^a-záéíóúàâêôãõç\w-]/gi, '').toLowerCase()
@@ -302,7 +319,8 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
         initial={isNew ? { opacity: 0, y: 20 } : { opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0, y: 0 }}
         transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
-        style={{ minHeight: '100dvh', paddingBottom: readingMode ? 60 : 100 }}
+        // Escrevendo, sobra espaço embaixo para o fim de uma nota longa subir acima do teclado
+        style={{ minHeight: '100dvh', paddingBottom: readingMode ? 60 : editing ? '55vh' : 100 }}
       >
         {/* Top bar */}
         <div
@@ -334,6 +352,20 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
           </div>
 
           <div className="flex items-center gap-1">
+            {editing ? (
+              <button
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => editorRef.current?.done()}
+                className="touch-feedback flex items-center gap-1 font-sans"
+                style={{
+                  background: 'var(--accent-amber-soft)', border: '1px solid rgba(var(--accent-rgb), 0.3)', borderRadius: 9,
+                  padding: '5px 10px', color: 'var(--accent-amber)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                }}
+                aria-label="Concluir edição"
+              >
+                <Check size={13} strokeWidth={2.6} /> Concluir
+              </button>
+            ) : (
             <button
               onClick={() => setMapOpen(true)}
               className="touch-feedback"
@@ -342,6 +374,7 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
             >
               <GitFork size={18} style={{ color: 'var(--text-muted)' }} />
             </button>
+            )}
             <button
               onClick={() => setSheetOpen(true)}
               className="touch-feedback"
@@ -422,7 +455,8 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); addTag(newTag) }
                 }}
-                onBlur={() => newTag && addTag(newTag)}
+                onFocus={() => setTagFocused(true)}
+                onBlur={() => { setTagFocused(false); if (newTag) addTag(newTag) }}
                 placeholder="+ tag"
                 className="font-sans amber-caret"
                 style={{
@@ -433,22 +467,38 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
             )}
           </div>
 
+          {!readingMode && !inVault && (
+            <TagSuggest
+              draft={draftForLinks}
+              notes={allNotes}
+              query={newTag}
+              focused={tagFocused}
+              onAdd={(t) => addTag(t)}
+            />
+          )}
+
           {/* Body */}
           <div style={readingMode ? { padding: '0 8px' } : {}}>
             <MarkdownEditor
+              ref={editorRef}
               value={content}
               onChange={handleContentChange}
+              onEditingChange={setEditing}
+              onDictate={() => setAudioOpen(true)}
               placeholder={mode === 'task' ? 'Adicione tarefas...' : mode === 'audio' ? 'Transcrição do áudio...' : 'Escreva aqui...'}
             />
           </div>
 
+          {!readingMode && !inVault && (
+            <RelatedNotes draft={draftForLinks} notes={allNotes} onLink={(t) => { linkNote(t); showToast(`Ligada a “${t}”`) }} />
+          )}
           {noteId && <BacklinksSection noteId={noteId} />}
         </div>
 
-        {!readingMode && (
+        {!readingMode && !editing && !audioOpen && (
           <div className="app-bar fixed bottom-0 left-0 right-0 z-40">
             <BottomToolbar
-              onInsertTemplate={(t) => handleContentChange(content + (content && !content.endsWith('\n') ? '\n' : '') + t)}
+              onInsertTemplate={(t) => insertAtCursor(t, true)}
               onStartAudio={() => setAudioOpen(true)}
               onAIAction={runTransform}
               onSuggest={runSuggest}
@@ -534,7 +584,7 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
               currentTags={tags}
               onApplyTitle={(t) => handleTitleChange(t)}
               onAddTag={(t) => updateTags([...draftRef.current.tags, t])}
-              onLinkNote={(n) => { appendContent(`[[${n.title ?? ''}]]`); showToast('Conexão criada') }}
+              onLinkNote={(n) => { if (n.title) linkNote(n.title); showToast('Conexão criada') }}
               onAddIdea={(idea) => { appendContent(`- [ ] ${idea}`); showToast('Ideia adicionada como tarefa') }}
               onClose={() => setSuggestions(null)}
             />
@@ -578,9 +628,9 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
 
         <AnimatePresence>
           {audioOpen && (
-            <AudioRecorder
+            <DictationBar
               onClose={() => setAudioOpen(false)}
-              onSave={(t) => { appendContent(t); setAudioOpen(false) }}
+              onInsert={(t) => { insertAtCursor(t); setAudioOpen(false); showToast('Ditado inserido') }}
             />
           )}
         </AnimatePresence>

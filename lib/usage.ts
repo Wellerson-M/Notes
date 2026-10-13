@@ -6,7 +6,7 @@ type Tokens = { promptTokenCount?: number; candidatesTokenCount?: number; though
 export type Outcome = 'ok' | 'limited' | 'error'
 
 /** Soma um pedido ao contador do dia. Nunca derruba a resposta: se o banco falhar, só não conta. */
-export async function recordUsage(model: string, outcome: Outcome, tokens?: Tokens) {
+export async function recordUsage(model: string, outcome: Outcome, tokens?: Tokens, error?: string) {
   try {
     const day = quotaDay()
     const col = await usageCollection()
@@ -21,7 +21,12 @@ export async function recordUsage(model: string, outcome: Outcome, tokens?: Toke
           inputTokens: tokens?.promptTokenCount ?? 0,
           outputTokens: (tokens?.candidatesTokenCount ?? 0) + (tokens?.thoughtsTokenCount ?? 0),
         },
-        ...(outcome === 'limited' ? { $set: { lastLimitedAt: Date.now() } } : {}),
+        ...(outcome !== 'ok' ? {
+          $set: {
+            ...(outcome === 'limited' ? { lastLimitedAt: Date.now() } : {}),
+            ...(error ? { lastError: error, lastErrorAt: Date.now() } : {}),
+          },
+        } : {}),
       },
       { upsert: true },
     )

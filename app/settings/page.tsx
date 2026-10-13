@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Cloud, Palette, Sparkles, Lock, Info, ChevronRight, CalendarDays, Bell } from 'lucide-react'
+import { Cloud, Palette, Sparkles, Lock, Info, ChevronRight, CalendarDays, Bell, HardDriveDownload } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import SyncIndicator from '@/components/SyncIndicator'
 import { useUIStore } from '@/store/ui'
@@ -18,6 +18,10 @@ import ThemePicker from '@/components/ThemePicker'
 import { AIUsage, ModelPicker } from '@/components/AISettings'
 import CalendarLink from '@/components/CalendarLink'
 import ReminderSettings from '@/components/ReminderSettings'
+import PasswordChange from '@/components/PasswordChange'
+import ServerBackups from '@/components/ServerBackups'
+import { canShareFiles, lastBackupAt, saveBackup } from '@/lib/backup'
+import { getVoiceAutoSend, setVoiceAutoSend } from '@/hooks/useSpeech'
 import { useRouter } from 'next/navigation'
 
 function Section({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
@@ -137,6 +141,18 @@ export default function SettingsPage() {
   const [lastSync, setLastSync] = useState<number | undefined>()
   const [live, setLive] = useState<{ version?: string; builtAt?: string } | null>(null)
   const importRef = useRef<HTMLInputElement>(null)
+  const [lastBackup, setLastBackup] = useState<number | undefined>()
+  const [backupStale, setBackupStale] = useState(false)
+  const [shareable, setShareable] = useState(false)
+  const [voiceAutoSend, setVoiceAutoSendState] = useState(false)
+
+  useEffect(() => {
+    // Só no cliente: localStorage, IndexedDB e o compartilhar do sistema
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setShareable(canShareFiles())
+    setVoiceAutoSendState(getVoiceAutoSend())
+    void lastBackupAt().then((t) => { setLastBackup(t); setBackupStale(!t || Date.now() - t > 14 * 86400000) })
+  }, [])
 
   const refreshStatus = async () => {
     try {
@@ -202,11 +218,12 @@ export default function SettingsPage() {
   const stamp = () => new Date().toISOString().slice(0, 10)
 
   /** Backup completo, como está gravado: as notas do Vault vão cifradas */
-  const exportAll = async () => {
-    const rows = (await db.notes.toArray()).filter((n) => !n.deleted).map(({ dirty: _d, ...n }) => n)
-    download(`grafite-notas-${stamp()}.json`, JSON.stringify(rows, null, 2), 'application/json')
-    const sealed = rows.filter((n) => n.cipher).length
-    showToast(`${rows.length} notas no backup${sealed ? ` (${sealed} do Vault, cifradas)` : ''}`)
+  const exportAll = async (share: boolean) => {
+    const r = await saveBackup({ share })
+    if (!r) return
+    setLastBackup(Date.now())
+    setBackupStale(false)
+    showToast(`${r.count} notas no backup${r.sealed ? ` (${r.sealed} do Vault, cifradas)` : ''}${r.via === 'share' ? ' — enviado' : ''}`)
   }
 
   /** Um .md por nota, para abrir em qualquer editor (Obsidian, VS Code...). O Vault fica de fora. */
@@ -369,7 +386,10 @@ export default function SettingsPage() {
               </button>
             </form>
           ) : connected ? (
-            <Row label="Sair deste aparelho" onClick={logout} />
+            <>
+              <PasswordChange kind="app" />
+              <Row label="Sair deste aparelho" onClick={logout} />
+            </>
           ) : null}
         </Section>
 
@@ -393,6 +413,9 @@ export default function SettingsPage() {
             label="Status"
             value={!server ? '...' : !server.ai ? 'falta a chave' : connected ? 'pronta' : 'entre com a senha'}
           />
+          <Row label="Assistente envia sozinho quando eu paro de falar">
+            <Toggle value={voiceAutoSend} onChange={(v) => { setVoiceAutoSend(v); setVoiceAutoSendState(v) }} />
+          </Row>
           <Link href="/assistant">
             <Row label="Abrir o assistente" onClick={() => {}} />
           </Link>
@@ -411,14 +434,30 @@ export default function SettingsPage() {
 
         <Section title="Vault e Privacidade" icon={Lock}>
           <Row label="Vault" value={vaultLocked ? 'trancado' : 'aberto'} onClick={() => router.push('/vault')} />
+          <PasswordChange kind="vault" />
           <Row label="Esquecer histórico de busca" danger onClick={() => { clearRecentSearches(); showToast('Histórico apagado') }} />
         </Section>
 
-        {/* 5. Dados */}
-        <Section title="Seus dados" icon={Info}>
-          <Row label="Backup completo (.json)" onClick={() => void exportAll()} />
+        {/* 5. Backup */}
+        <div id="backup" style={{ scrollMarginTop: 72 }}>
+        <Section title="Backup" icon={HardDriveDownload}>
+          <div className="px-5 py-3" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+            <p className="font-sans" style={{ fontSize: 13, color: backupStale ? 'var(--warning)' : 'var(--text-secondary)' }}>
+              Último backup em arquivo: {lastBackup ? whenText(lastBackup) : 'nunca'}
+            </p>
+            <p className="font-sans mt-1" style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: '17px' }}>
+              Guarde fora do Atlas: no Google Drive ou e-mail ({shareable ? 'use “Enviar backup”' : 'baixe e envie'}), e de vez em quando numa pasta do PC que vá para o OneDrive. As notas do Vault vão cifradas.
+            </p>
+          </div>
+          {shareable && <Row label="Enviar backup (Drive, e-mail...)" onClick={() => void exportAll(true)} />}
+          <Row label="Baixar backup (.json)" onClick={() => void exportAll(false)} />
           <Row label="Exportar em Markdown (.zip)" onClick={exportMarkdown} />
           <Row label="Restaurar de um backup" onClick={() => importRef.current?.click()} />
+          <ServerBackups connected={!!connected} />
+        </Section>
+        </div>
+
+        <Section title="Sobre o app" icon={Info}>
           <input
             ref={importRef}
             type="file"

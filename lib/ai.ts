@@ -32,7 +32,7 @@ const normalize = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLo
  * Escolhe as notas mais relevantes para mandar como contexto: palavras em comum com a
  * pergunta pesam mais, recência desempata. Notas do Vault nunca saem do aparelho.
  */
-export function buildDigests(notes: Note[], query = '', limit = 40, excludeId?: string): NoteDigest[] {
+export function buildDigests(notes: Note[], query = '', limit = 40, excludeId?: string, fullTop = 0): NoteDigest[] {
   const words = normalize(query).split(/\W+/).filter((w) => w.length > 2)
   const now = Date.now()
   return notes
@@ -48,15 +48,18 @@ export function buildDigests(notes: Note[], query = '', limit = 40, excludeId?: 
     })
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
-    .map(({ n }) => ({
+    .map(({ n }, i) => ({
       id: n.id,
       title: n.title,
       tags: n.tags,
       date: new Date(n.createdAt).toLocaleDateString('pt-BR'),
-      text: getPreview(n.content, 400),
+      // As mais relevantes vão com o texto exato (o assistente precisa dele para alterar trechos)
+      text: i < fullTop ? clipRaw(n.content, 4000) : getPreview(n.content, 400),
       when: n.schedule ? `${n.schedule.date}${n.schedule.time ? ` ${n.schedule.time}` : ''}` : undefined,
     }))
 }
+
+const clipRaw = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}\n[...]` : text)
 
 export const ai = {
   transform: (action: TransformAction, title: string | null, content: string) =>
@@ -71,15 +74,22 @@ export const ai = {
       notes: buildDigests(all, `${note.title ?? ''} ${note.content}`, 30, note.id),
     }),
 
-  assistant: (message: string, history: ChatTurn[], all: Note[]) =>
-    call<AssistantReply>({
+  assistant: (message: string, history: ChatTurn[], all: Note[]) => {
+    // A conversa recente também conta para achar a nota ("tira o leite dela")
+    const context = [message, ...history.slice(-4).map((t) => t.text)].join(' ')
+    const notes = buildDigests(all, context, 40, undefined, 4)
+    const sent = new Set(notes.map((n) => n.id))
+    return call<AssistantReply>({
       kind: 'assistant',
       message,
       history,
-      notes: buildDigests(all, message),
+      notes,
+      // Índice com o título das outras notas: dá para achar uma nota mesmo sem palavra em comum
+      index: all.filter((n) => !n.inVault && !sent.has(n.id) && n.title).slice(0, 300).map((n) => ({ id: n.id, title: n.title! })),
       today: new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
       todayIso: dateKey(new Date()),
-    }),
+    })
+  },
 
   /** Foto (já comprimida no aparelho) → texto em markdown */
   ocr: (image: { base64: string; mimeType: string }) =>

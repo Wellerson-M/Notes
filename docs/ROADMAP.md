@@ -1,6 +1,6 @@
 # Grafite Notas — Estado e próximos passos
 
-> Última atualização: **12/10/2026**. Escrito para você (ou uma IA) retomar daqui a semanas sem reler o código.
+> Última atualização: **13/10/2026**. Escrito para você (ou uma IA) retomar daqui a semanas sem reler o código.
 > Detalhes técnicos em [ARQUITETURA.md](ARQUITETURA.md) · configuração em [DEPLOY.md](DEPLOY.md) · testes em [TESTES.md](TESTES.md).
 
 ## Se você só tem 5 minutos
@@ -29,7 +29,11 @@
 | Layout PC (coluna central) | ✅ |
 | **Vault cifrado** (AES-GCM no aparelho, senha própria, biometria opcional, tranca sozinho) | ✅ o Atlas só vê o cifrado |
 | **Histórico de versões** (a cada 10 min de edição e em todo conflito de sync) | ✅ só no aparelho; menu da nota → Versões anteriores |
-| Backup completo (.json, Vault cifrado) e exportação em Markdown (.zip) | ✅ |
+| Backup completo (.json, Vault cifrado) e exportação em Markdown (.zip) | ✅ + "Enviar backup" (Drive/e-mail), lembrete a cada 14 dias e **cópia diária automática no servidor** (14 dias) |
+| Editor: barra acima do teclado, menu ao digitar `-` e `/`, "Concluir", cursor na linha tocada, notas longas | ✅ |
+| **Conexões sugeridas** por conteúdo e **tags sugeridas** (no aparelho, sem IA) | ✅ ligar põe `[[ ]]` na linha "Relacionadas:" no fim |
+| Assistente altera trechos, marca tarefas, renomeia e apaga notas | ✅ sempre com confirmação; a versão anterior vai para o histórico |
+| Trocar senha do app e do Vault pelo próprio app | ✅ verificação em duas etapas ainda não |
 | **Compartilhar para o app** (share target) e atalhos no ícone | ✅ Android; o iPhone não suporta share target em PWA |
 | Teste ponta a ponta (`npm run e2e`, 76 verificações, celular e PC, IA real) | ✅ |
 | **Lembretes por notificação** (Web Push; aviso padrão nos Ajustes, trocável ou desligável por nota; "Adiar 10 min"; chega no relógio pelo Zepp) | ✅ precisa do "relógio" no cron-job.org para sair na hora com o app fechado |
@@ -69,6 +73,14 @@ Criar no cron-job.org (grátis) uma tarefa **a cada minuto** chamando o link de 
 ### 4. Merge de conflito (opcional)
 Hoje, quando dois aparelhos editam a mesma nota offline, a versão mais nova vence e a outra vai para o histórico. Dá para juntar automaticamente com um diff de linhas (ex.: `diff-match-patch`).
 
+### 5. Testar no celular as melhorias de 13/10
+Barra acima do teclado (Android e iPhone), gatilhos `-` e `/`, "Concluir", ditado no cursor com "apagar", assistente sem cortar a fala, trocar senha do Vault com dois aparelhos.
+**Pronto quando:** tudo funcionar no aparelho real; anotar aqui o que falhar.
+
+### 6. Segurança (opcional)
+- Verificação em duas etapas (TOTP, app autenticador) no login do app.
+- Limite de tentativas de login por IP (hoje só há 800ms de atraso por erro).
+
 ### Pequenas pendências
 - Avisos de lint: `<img>` no `NoteCard.tsx` (miniaturas de foto herdadas do protótipo; nenhuma nota tem foto hoje).
 - O avatar "W" no topo é fixo.
@@ -86,6 +98,7 @@ Hoje, quando dois aparelhos editam a mesma nota offline, a versão mais nova ven
 
 ## Histórico
 
+- **13/10/2026** — IA: o "sobrecarregada" vinha do Flash (45–90s no plano grátis) como principal no Automático e sem tempo máximo no reserva; agora Flash-Lite em tudo, repetição de 1s no 503, 15s por tentativa e último erro visível em Ajustes. Editor: barra de atalhos acima do teclado, gatilhos `-` e `/`, "Concluir", cursor na linha tocada, textarea que cresce (o fim de notas longas sumia). Ditado na nota em barra compacta, inserido no cursor, com "Apagar o que falei" (o reset antigo deixava o texto voltar); assistente não corta mais a fala (envio automático opcional, 2,8s). Conexões e tags sugeridas por conteúdo. Assistente com `edit_note`/`delete_note`, texto completo das notas relevantes e índice de títulos. Troca de senha do app (hash scrypt no Atlas) e do Vault (recifra tudo). Backup: enviar para o Drive, lembrete e cópia diária no servidor.
 - **12/10/2026 (7)** — Lembretes por notificação (Web Push com chaves VAPID derivadas da `APP_PASSWORD`): ligar por aparelho em Ajustes → Lembretes, aviso padrão para notas com hora (15 min antes) e do dia todo (no dia, às 9h), escolha por nota em "agendar" (vários avisos ou "sem aviso"), notificação com "Adiar 10 min" e "Abrir", Vault avisa sem conteúdo. Disparo por `/api/push/tick` (cron-job.org a cada minuto) e de carona em cada sync; nunca avisa duas vezes. Teste `npm run e2e:lembretes`.
 
 - **21/05/2026** — Fase 1: frontend visual completo com dados mockados (7 telas, 22 componentes, os 5 efeitos visuais, PWA instalável). Nada persistia.

@@ -2,6 +2,7 @@ import { after } from 'next/server'
 import { isAuthenticated, unauthorized } from '@/lib/auth'
 import { describeDbError, notesCollection, type NoteDoc } from '@/lib/mongo'
 import { runReminders } from '@/lib/push'
+import { dailyBackup } from '@/lib/backups'
 import type { Note } from '@/lib/types'
 
 type SyncBody = { since?: number; notes?: Note[] }
@@ -16,6 +17,8 @@ export async function POST(request: Request) {
   if (!(await isAuthenticated())) return unauthorized()
   // De carona: com o app em uso, os lembretes saem mesmo se o relógio externo falhar
   after(() => runReminders('sync', 50_000).catch((err) => console.error('[lembretes]', err)))
+  // Cópia automática do dia no servidor (no máximo uma vez por dia; barato quando já existe)
+  after(() => dailyBackup().catch((err) => console.error('[backup]', err)))
   try {
     return await sync(request)
   } catch (err) {

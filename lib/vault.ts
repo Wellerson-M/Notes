@@ -86,13 +86,17 @@ export function lock() {
 }
 
 // ── Cifrar / decifrar ──────────────────────────────────────────────────
+async function sealWith(key: CryptoKey, salt: string, payload: Payload): Promise<string> {
+  const iv = random(12)
+  const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(payload)))
+  return [VERSION, salt, toB64(iv), toB64(new Uint8Array(data))].join('.')
+}
+
 export async function encrypt(payload: Payload): Promise<string> {
   const salt = await primarySalt()
   const key = salt && keys.get(salt)
   if (!salt || !key) throw new VaultLockedError()
-  const iv = random(12)
-  const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(payload)))
-  return [VERSION, salt, toB64(iv), toB64(new Uint8Array(data))].join('.')
+  return sealWith(key, salt, payload)
 }
 
 /** Decifra com as chaves abertas; lança VaultLockedError se não houver chave para esse sal */
@@ -130,19 +134,68 @@ export async function unlock(password: string): Promise<boolean> {
   const next = new Map<string, CryptoKey>()
   for (const salt of salts) next.set(salt, await deriveKey(password, salt))
 
-  const sample = (await getMeta<string>('vaultCheck')) ??
-    (await db.notes.filter((n) => !!n.cipher && !n.deleted).first())?.cipher
-  if (sample) {
+  // Confere primeiro numa nota (a verdade que vem do sync) e depois no verificador local: se a
+  // senha foi trocada em outro aparelho, o verificador daqui ainda é da senha antiga
+  const noteSample = (await db.notes.filter((n) => !!n.cipher && !n.deleted).first())?.cipher
+  const check = await getMeta<string>('vaultCheck')
+  const opens = async (sample: string) => {
     const { salt, iv, data } = parse(sample)
     try {
       await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(iv) }, next.get(salt)!, fromB64(data))
+      return true
     } catch {
       return false
     }
   }
+  const noteOk = noteSample ? await opens(noteSample) : false
+  const checkOk = check ? await opens(check) : false
+  if (noteSample ? !noteOk : check && !checkOk) return false
   setUnlocked(next)
+  if (noteOk && !checkOk && noteSample) {
+    // Senha nova vinda de outro aparelho: este passa a usar o sal dela
+    const salt = parse(noteSample).salt
+    await setMeta('vaultSalt', salt)
+    await setMeta('vaultCheck', await sealWith(next.get(salt)!, salt, { title: null, content: 'ok', tags: [] }))
+  }
   if (await biometricEnabled()) await db.secrets.put({ key: 'vaultKeys', value: next })
   return true
+}
+
+export type ChangeResult = 'ok' | 'wrong' | 'error'
+
+/**
+ * Troca a senha do Vault: confere a atual, cria um sal novo e recifra tudo (notas e versões
+ * anteriores). As notas regravadas sincronizam, e nos outros aparelhos o Vault passa a abrir só
+ * com a senha nova (a biometria de lá precisa ser ligada de novo).
+ */
+export async function changePassword(current: string, nextPassword: string): Promise<ChangeResult> {
+  if (!(await unlock(current))) return 'wrong'
+  try {
+    const salt = toB64(random(16))
+    const key = await deriveKey(nextPassword, salt)
+    const now = new Date().toISOString()
+    // Cifra tudo antes de abrir a transação (o Dexie fecha a transação se ela esperar a Web Crypto)
+    const notes = await db.notes.filter((n) => !!n.cipher).toArray()
+    const reNotes = await Promise.all(notes.map(async (n) => ({ ...n, cipher: await sealWith(key, salt, await decrypt(n.cipher!)), updatedAt: now, dirty: 1 as const })))
+    const versions = await db.history.filter((v) => !!v.cipher).toArray()
+    const reVersions = await Promise.all(versions.map(async (v) => {
+      try { return { ...v, cipher: await sealWith(key, salt, await decrypt(v.cipher!)) } } catch { return null } // versão de sal desconhecido: fica como está
+    }))
+    const check = await sealWith(key, salt, { title: null, content: 'ok', tags: [] })
+    await db.transaction('rw', db.notes, db.history, db.meta, async () => {
+      await db.notes.bulkPut(reNotes)
+      await db.history.bulkPut(reVersions.filter((v) => v !== null))
+      await db.meta.bulkPut([{ key: 'vaultSalt', value: salt }, { key: 'vaultCheck', value: check }])
+    })
+    setUnlocked(new Map([[salt, key]]))
+    if (await biometricEnabled()) await db.secrets.put({ key: 'vaultKeys', value: keys })
+    const { scheduleSync } = await import('./sync')
+    scheduleSync(300)
+    return 'ok'
+  } catch (err) {
+    console.error('[vault] troca de senha', err)
+    return 'error'
+  }
 }
 
 // ── Biometria (WebAuthn) ───────────────────────────────────────────────
@@ -192,6 +245,12 @@ export async function unlockWithBiometric(): Promise<boolean> {
     },
   }).catch(() => null)
   if (!ok) return false
+  // Senha trocada em outro aparelho: a chave guardada aqui não abre mais as notas
+  const sample = (await db.notes.filter((n) => !!n.cipher && !n.deleted).first())?.cipher
+  if (sample && !stored.has(parse(sample).salt)) {
+    await disableBiometric()
+    return false
+  }
   setUnlocked(stored)
   return true
 }

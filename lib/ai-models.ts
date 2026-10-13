@@ -10,14 +10,14 @@ export type ModelTier = Exclude<ModelPref, 'auto'>
 
 export const MODEL_TIERS: Record<ModelTier, { label: string; description: string; defaultId: string; dailyLimit: number }> = {
   fast: { label: 'Rápido', description: 'Flash-Lite · ~1,5s · cota grande', defaultId: 'gemini-flash-lite-latest', dailyLimit: 1000 },
-  smart: { label: 'Inteligente', description: 'Flash · pensa antes · 5–20s', defaultId: 'gemini-flash-latest', dailyLimit: 250 },
+  smart: { label: 'Inteligente', description: 'Flash · pensa antes · pode levar mais de 30s', defaultId: 'gemini-flash-latest', dailyLimit: 250 },
   pro: { label: 'Máximo', description: 'Pro · o melhor e o mais lento · cota pequena', defaultId: 'gemini-pro-latest', dailyLimit: 100 },
 }
 
 export const EMBED_LABEL = { label: 'Busca por sentido', defaultId: 'gemini-embedding-001', dailyLimit: 1000 }
 
 export const MODEL_PREFS: { id: ModelPref; label: string; description: string }[] = [
-  { id: 'auto', label: 'Automático', description: 'rápido no dia a dia; o Inteligente para fotos, expandir texto e resumos da semana' },
+  { id: 'auto', label: 'Automático', description: 'o Rápido em tudo; o Inteligente entra só de reserva' },
   { id: 'fast', label: MODEL_TIERS.fast.label, description: MODEL_TIERS.fast.description },
   { id: 'smart', label: MODEL_TIERS.smart.label, description: MODEL_TIERS.smart.description },
   { id: 'pro', label: MODEL_TIERS.pro.label, description: MODEL_TIERS.pro.description },
@@ -27,16 +27,16 @@ export const MODEL_PREFS: { id: ModelPref; label: string; description: string }[
 export type TaskInfo = { kind: string; action?: string; size: number }
 
 /**
- * Automático: o Rápido resolve conversa, sugestões e transformações curtas; o Inteligente fica
- * com o que pede mais raciocínio (ler foto, expandir, retrospectiva, textos longos).
+ * Automático: o Rápido (Flash-Lite, ~1,5s) atende tudo, inclusive foto e textos longos.
+ * O Flash "pensa" e no plano grátis chega a levar 45–90s nos horários de pico: usar ele como
+ * principal fazia a chamada estourar o tempo e aparecer como "sobrecarregada". Fica de reserva.
  * Devolve [principal, reserva].
  */
-export function pickTiers(pref: ModelPref, task: TaskInfo): [ModelTier, ModelTier] {
+export function pickTiers(pref: ModelPref, _task: TaskInfo): [ModelTier, ModelTier] {
   if (pref === 'fast') return ['fast', 'smart']
   if (pref === 'smart') return ['smart', 'fast']
   if (pref === 'pro') return ['pro', 'smart']
-  const heavy = task.kind === 'ocr' || task.kind === 'review' || task.action === 'expand' || task.size > 8000
-  return heavy ? ['smart', 'fast'] : ['fast', 'smart']
+  return ['fast', 'smart']
 }
 
 const PREF_KEY = 'grafite-ai-model'

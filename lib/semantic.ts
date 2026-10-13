@@ -54,3 +54,9 @@ function dot(a: number[], b: number[]) {
   for (let i = 0; i < a.length && i < b.length; i++) s += a[i] * b[i]
   return s
 }
+
+/** Vetores já calculados (só leitura local, sem chamar a IA) — reforçam as conexões sugeridas */
+export async function localVectors(ids: string[]): Promise<Map<string, number[]>> {
+  const rows = await db.embeddings.bulkGet(ids)
+  return new Map(rows.flatMap((e) => (e ? [[e.id, e.vec] as [string, number[]]] : [])))
+}

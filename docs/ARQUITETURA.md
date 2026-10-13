@@ -120,6 +120,7 @@ Só no aparelho, até 50 versões por nota. Uma versão é guardada ao editar (s
 - **Biometria (opcional, por aparelho):** WebAuthn com autenticador da plataforma. A chave é guardada como CryptoKey não extraível na tabela `secrets` e só é usada depois de o sistema confirmar a digital, o rosto ou o PIN.
 - **IA:** notas do Vault nunca são enviadas (`buildDigests` filtra e o editor bloqueia as ações).
 - **Sem recuperação:** esquecer a senha = perder as notas do Vault. O backup `.json` leva as notas cifradas.
+- **Trocar a senha** (tela do Vault ou Ajustes, `vault.changePassword`): confere a atual, cria um sal novo e recifra todas as notas e versões (cifra tudo antes da transação do Dexie). As notas regravadas sincronizam. Nos outros aparelhos, `unlock` confere a senha numa nota (e não só no verificador local, que ainda é da senha antiga) e adota o sal novo; a biometria de lá é desligada sozinha quando a chave guardada não abre mais as notas.
 
 ## Busca por sentido (`lib/semantic.ts`)
 
@@ -129,7 +130,13 @@ Cada nota fora do Vault vira um vetor de 256 dimensões (`gemini-embedding-001`)
 
 ## Login (`lib/auth.ts`)
 
-Usuário único. `POST /api/auth` compara a senha com `APP_PASSWORD` (comparação em tempo constante e 800ms de atraso quando erra) e grava o cookie `grafite_session` (httpOnly, 1 ano). O valor do cookie é `HMAC-SHA256(APP_PASSWORD, "grafite-session-v1")`: **trocar a senha desloga todos os aparelhos**. `/api/sync` e `/api/ai` exigem o cookie.
+Usuário único. `POST /api/auth` confere a senha (comparação em tempo constante e 800ms de atraso quando erra) e grava o cookie `grafite_session` (httpOnly, 1 ano). `/api/sync`, `/api/ai` e `/api/backup` exigem o cookie.
+
+- **Senha de fábrica:** `APP_PASSWORD` (Vercel). Vale enquanto ninguém trocar a senha pelo app.
+- **Trocar a senha** (Ajustes → Sincronização → "Trocar senha do app", `POST /api/auth/password`): pede a atual, grava a nova só como hash **scrypt** no Atlas (`app_meta/auth`, com sal e uma "versão") e renova o cookie deste aparelho. Daí em diante a `APP_PASSWORD` não entra mais.
+- **Cookie:** `HMAC-SHA256(APP_PASSWORD, "grafite-session-v1|<versão>")`. Trocar a senha muda a versão e **desloga os outros aparelhos**. Cada instância guarda o documento `auth` em memória por 60s.
+- **Esqueceu a senha nova?** Apague o documento `auth` da coleção `app_meta` no Atlas: volta a valer a `APP_PASSWORD`.
+- A chave da agenda, do relógio dos lembretes e as chaves VAPID continuam derivadas da `APP_PASSWORD` (trocar a senha pelo app não as muda).
 
 Sem login, o app funciona normalmente, só que sem nuvem e sem IA.
 
@@ -141,20 +148,46 @@ A chave do Gemini fica só no servidor. O modelo padrão é `gemini-flash-lite-l
 |---|---|---|
 | `transform` | resumir, tarefas, expandir, traduzir, corrigir, tópicos | `{ text }`, que o usuário escolhe se substitui ou acrescenta |
 | `suggest` | botão "Sugestões" no editor | `{ title, tags, related[], ideas[] }` (JSON com schema) |
-| `assistant` | tela do assistente | `{ reply, noteIds[], actions[] }`, com ações `create_note`, `append_to_note` e `open_note` |
+| `assistant` | tela do assistente | `{ reply, noteIds[], actions[] }`, com ações `create_note`, `append_to_note`, `edit_note` (troca um trecho exato, apaga um trecho, marca tarefa, renomeia ou reescreve), `delete_note` e `open_note` |
 | `ocr` | botão "foto" no editor (imagem reduzida a 1600px/JPEG no aparelho) | `{ text }` em markdown |
 | `embed` | busca por sentido | `{ vectors[][] }` normalizados |
 | `review` | "Resumo da semana" no diário | `{ text }` em markdown |
 
-**Contexto enviado:** `buildDigests` escolhe até 40 notas (palavras em comum com o pedido, mais recência e fixadas), com prévia de 400 caracteres cada. **Notas do Vault nunca entram.** Ações propostas pela IA só são aplicadas quando o usuário toca no botão, e ids inventados pela IA são descartados na interface.
+**Contexto enviado:** `buildDigests` escolhe até 40 notas (palavras em comum com o pedido e com as últimas falas da conversa, mais recência e fixadas), com prévia de 400 caracteres cada; no assistente, as 4 mais relevantes vão com o **texto completo** (até 4 mil caracteres), para o `edit_note` copiar o trecho exato. Vai também um **índice** com id e título de até 300 outras notas. **Notas do Vault nunca entram.** Ações propostas pela IA só são aplicadas quando o usuário toca no botão ("Aplicar tudo" aplica as pendentes, menos abrir e apagar), e ids inventados pela IA são descartados na interface. Antes de um `edit_note`, a versão anterior vai para o histórico; se o trecho não for achado, nada muda.
 
-**Sobrecarga:** se o modelo principal responder 500/503 ("high demand") ou 429 (cota do modelo; no plano grátis cada modelo tem a sua), ou passar de 20s, a rota tenta uma vez o `GEMINI_FALLBACK_MODEL` (padrão `gemini-flash-latest`).
+**Sobrecarga:** cada tentativa tem 15s. Se o modelo principal responder 500/503 ("high demand"), a rota espera 1s e **repete o mesmo modelo** (o pico do Google costuma durar segundos); se falhar de novo, der 429 (cota do modelo; no plano grátis cada modelo tem a sua) ou estourar o tempo, tenta o reserva. `maxDuration` da rota = 60s. O último erro de cada modelo (status e mensagem do Google) fica no contador de uso e aparece em Ajustes → IA.
+
+**Por que aparecia "sobrecarregada" com pouco uso (13/10/2026):** o Automático mandava foto, "expandir", resumo da semana e textos com mais de 8 mil caracteres direto para o Flash, que no plano grátis estava levando **45 a 90 segundos** por resposta (fila do Google), e o reserva não tinha tempo máximo. A chamada estourava e virava "sobrecarregada". Agora o Automático usa o Flash-Lite (~1s) em tudo e o Flash só de reserva. O Pro dá 429 na hora (sem cota grátis nesta chave), e os modelos 2.5 já não existem para chaves novas (404).
 
 **Erros:** `503` quando falta a chave ou o Google está sobrecarregado, `429` quando o limite gratuito acaba e `502` nos demais casos. Todos viram mensagens em português na interface.
 
 ## Voz (`hooks/useSpeech.ts`)
 
-Usa `SpeechRecognition`/`webkitSpeechRecognition` em `pt-BR`, com resultados parciais. O navegador encerra a escuta em silêncios longos, e o hook reinicia sozinho enquanto o usuário não para. **Android:** o modo contínuo do Chrome repete a frase a cada resultado ("oi" → "oi tudo" → "oi tudo bem"), então lá é uma frase por sessão; e o texto é sempre remontado da lista inteira de resultados e juntado por `joinSpeech`, que tira repetições e sobreposições. No assistente (`endOnSilence`), a escuta para 1,2s depois da fala e envia sozinha. Funciona no Chrome (Android e desktop), no Edge e no Safari (iOS 14.5+). No Firefox não existe: aparece uma mensagem pedindo o Chrome. Exige HTTPS (ou localhost) e permissão de microfone.
+Usa `SpeechRecognition`/`webkitSpeechRecognition` em `pt-BR`, com resultados parciais. O navegador encerra a escuta em silêncios longos, e o hook reinicia sozinho enquanto o usuário não para. **Android:** o modo contínuo do Chrome repete a frase a cada resultado ("oi" → "oi tudo" → "oi tudo bem"), então lá é uma frase por sessão; e o texto é sempre remontado da lista inteira de resultados e juntado por `joinSpeech`, que tira repetições e sobreposições. Funciona no Chrome (Android e desktop), no Edge e no Safari (iOS 14.5+). No Firefox não existe: aparece uma mensagem pedindo o Chrome. Exige HTTPS (ou localhost) e permissão de microfone.
+
+- **Apagar o que falei** (`reset`): descarta o texto e reinicia a sessão do reconhecedor; os resultados antigos da sessão em andamento são ignorados (`skipRef`), senão voltariam no próximo evento.
+- **Na nota:** o ditado é uma barra compacta (`DictationBar`) por cima da nota; o texto só entra ao tocar em "Inserir na nota", **no ponto onde o cursor estava** (`EditorHandle.insert`). Não para sozinho em pausas.
+- **No assistente:** por padrão envia só no botão (antes cortava a frase depois de 1,2s de silêncio). Em Ajustes → IA dá para ligar o envio automático, que espera 2,8s de silêncio.
+
+## Editor (`components/MarkdownEditor.tsx`)
+
+- **Prévia × edição:** a nota aparece formatada; tocar numa linha abre o textarea com o cursor **naquela linha** (cada linha da prévia tem `data-line`).
+- **Altura:** o textarea cresce com o texto (sem rolagem interna) e a tela ganha folga embaixo enquanto se escreve, para o fim de notas longas subir acima do teclado.
+- **Barra acima do teclado** (`EditorAccessory`): ditar, tarefa, lista, numerada, título, negrito, ligar nota, citação, divisória, data e hora, e **Concluir** (sai da edição e fica na nota; também no topo). Os botões não tiram o foco do texto. No Android a página encolhe com o teclado (`interactive-widget=resizes-content` no layout); no iPhone, `useKeyboardInset` sobe a barra pela `visualViewport`.
+- **Gatilhos no começo da linha:** `-` oferece lista, tarefa ou divisória; `/` abre o menu de inserir. Enter continua listas e numeração; Enter num item vazio encerra a lista.
+- **Controle por fora** (`ref` → `EditorHandle`): `insert(texto, { block })` no último cursor conhecido (ditado, templates) e `done()`.
+
+## Conexões e tags sugeridas (`lib/related.ts`)
+
+Tudo no aparelho, sem IA: cada nota vira um vetor TF-IDF das palavras (sem acento, sem palavras vazias, com radical simples para plural/gênero). A semelhança soma o cosseno, tags em comum e, se já existirem, os vetores da busca por sentido (`localVectors`, sem chamar a IA). O Vault fica de fora.
+
+- **Conexões sugeridas** (`RelatedNotes`, no fim da nota): até 6 notas parecidas com o motivo ("#viagem em comum", "fala de orçamento, praia"). "Ligar" põe `[[Título]]` na linha **`Relacionadas:`** no fim da nota (`addRelatedLink`), nunca no meio do texto. O mesmo vale para "ligar" nas sugestões da IA.
+- **Tags** (`TagSuggest`): digitando no "+ tag", completa com as tags que já existem; sem digitar, sugere as tags existentes que combinam com o texto ou com as notas parecidas e, se faltar, até 2 palavras fortes do texto como tag nova.
+
+## Backup
+
+- **Cópia diária no servidor** (`lib/backups.ts`, coleção `backups`): uma foto de todas as notas por dia (Vault cifrado), guardada por 14 dias. Feita de carona no sync e no relógio dos lembretes (`after()`, no máximo uma conferência a cada 30 min por instância). Ajustes → Backup lista e baixa (`GET /api/backup?day=`), no mesmo formato do backup .json, que o "Restaurar" aceita.
+- **Em arquivo, fora do Atlas** (`lib/backup.ts`): "Enviar backup" abre o compartilhar do sistema (Google Drive, e-mail...) onde existir; "Baixar backup" baixa o .json. O app lembra (toast) se passar de 14 dias sem backup em arquivo.
 
 ## Compartilhar para o app
 
@@ -198,7 +231,7 @@ Uma nota pode ter `schedule: { date: 'AAAA-MM-DD', time?: 'HH:MM' }`, sempre no 
 
 ## Modelos e uso da IA (`lib/ai-models.ts`, `lib/usage.ts`)
 
-Cada pedido leva a preferência do aparelho (`auto`, `fast`, `smart`, `pro`; Ajustes → IA). No **Automático**, o Rápido (Flash-Lite) atende conversa, sugestões e transformações curtas; o Inteligente (Flash) fica com foto, "expandir", retrospectiva e textos com mais de 8 mil caracteres. Sempre há um reserva (o outro nível) para 429, 500/503 ou mais de 20s.
+Cada pedido leva a preferência do aparelho (`auto`, `fast`, `smart`, `pro`; Ajustes → IA). No **Automático**, o Rápido (Flash-Lite) atende tudo, inclusive foto e textos longos; o Inteligente (Flash) só entra de reserva, porque no plano grátis chega a levar 45–90s. Sempre há um reserva (o outro nível) para 429, 500/503 repetido ou mais de 15s.
 
 Toda chamada ao Gemini soma um contador na coleção `ai_usage` (um documento por dia da cota e modelo: pedidos, limites atingidos, erros e tokens). O dia segue o horário do Pacífico, como a cota do Google. `GET /api/ai` devolve o uso de hoje e da semana. O Google não informa quanto resta da cota, então os limites diários exibidos são estimativas; o dado confiável é o "limite atingido" registrado.
 

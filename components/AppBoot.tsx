@@ -6,6 +6,8 @@ import { scheduleSync, startAutoSync, syncNow } from '@/lib/sync'
 import { startUpdateWatcher } from '@/lib/updates'
 import { startAutoLock } from '@/lib/vault'
 import { applyTheme, getTheme } from '@/lib/theme'
+import { backupReminderDue } from '@/lib/backup'
+import { useUIStore } from '@/store/ui'
 
 const WELCOME_DATE = '2026-01-01T12:00:00.000Z'
 
@@ -54,7 +56,17 @@ export default function AppBoot() {
       await setMeta('welcomed', 1)
     })()
 
-    return () => { stopSync(); stopUpdates(); stopAutoLock() }
+    // Lembrete de backup em arquivo (fora do Atlas), sem atrapalhar a abertura do app
+    const backupTimer = setTimeout(async () => {
+      const days = await backupReminderDue().catch(() => null)
+      if (days === null) return
+      useUIStore.getState().showToast(
+        days < 0 ? 'Você ainda não fez um backup das notas fora da nuvem' : `Faz ${days} dias do último backup das notas`,
+        { actionLabel: 'fazer', onAction: () => { location.href = '/settings#backup' } },
+      )
+    }, 20_000)
+
+    return () => { stopSync(); stopUpdates(); stopAutoLock(); clearTimeout(backupTimer) }
   }, [])
 
   return null

@@ -46,6 +46,8 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
+  // Android: a página encolhe com o teclado, e as barras fixas do editor ficam acima dele
+  interactiveWidget: 'resizes-content',
   themeColor: '#111210',
 }
 

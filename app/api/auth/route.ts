@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers'
-import { checkPassword, createSessionValue, isAuthenticated, SESSION_COOKIE } from '@/lib/auth'
+import { checkPassword, createSessionValue, isAuthenticated, SESSION_COOKIE, SESSION_COOKIE_OPTIONS } from '@/lib/auth'
 
 /** Diz se este aparelho está logado e se o servidor tem o que precisa */
 export async function GET() {
@@ -12,17 +12,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const { password } = (await request.json().catch(() => ({}))) as { password?: string }
-  if (!password || !checkPassword(password)) {
+  if (!password || !(await checkPassword(password).catch(() => false))) {
     await new Promise((r) => setTimeout(r, 800)) // freia tentativa e erro
     return Response.json({ error: 'senha incorreta' }, { status: 401 })
   }
-  ;(await cookies()).set(SESSION_COOKIE, createSessionValue(), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 60 * 60 * 24 * 365,
-  })
+  ;(await cookies()).set(SESSION_COOKIE, await createSessionValue(), SESSION_COOKIE_OPTIONS)
   return Response.json({ ok: true })
 }
 
