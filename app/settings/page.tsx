@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Cloud, Palette, Sparkles, Lock, Info, ChevronRight, CalendarDays, Bell, HardDriveDownload } from 'lucide-react'
+import { Cloud, Palette, Sparkles, Lock, Info, ChevronRight, CalendarDays, Bell, HardDriveDownload, Mic, Waypoints } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import SyncIndicator from '@/components/SyncIndicator'
 import { useUIStore } from '@/store/ui'
@@ -23,6 +23,9 @@ import ServerBackups from '@/components/ServerBackups'
 import { canShareFiles, lastBackupAt, saveBackup } from '@/lib/backup'
 import { getVoiceAutoSend, setVoiceAutoSend } from '@/hooks/useSpeech'
 import { useRouter } from 'next/navigation'
+import VoiceSettings from '@/components/VoiceSettings'
+import { getGalaxyOn, setGalaxyOn } from '@/components/GalaxyBackdrop'
+import { getLinksInText, setLinksInText } from '@/lib/related'
 
 function Section({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
   return (
@@ -145,12 +148,16 @@ export default function SettingsPage() {
   const [backupStale, setBackupStale] = useState(false)
   const [shareable, setShareable] = useState(false)
   const [voiceAutoSend, setVoiceAutoSendState] = useState(false)
+  const [galaxy, setGalaxy] = useState(true)
+  const [linksInText, setLinksInTextState] = useState(false)
 
   useEffect(() => {
     // Só no cliente: localStorage, IndexedDB e o compartilhar do sistema
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setShareable(canShareFiles())
     setVoiceAutoSendState(getVoiceAutoSend())
+    setGalaxy(getGalaxyOn())
+    setLinksInTextState(getLinksInText())
     void lastBackupAt().then((t) => { setLastBackup(t); setBackupStale(!t || Date.now() - t > 14 * 86400000) })
   }, [])
 
@@ -272,7 +279,7 @@ export default function SettingsPage() {
       showToast(`${count} notas importadas`)
       void syncNow()
     } catch {
-      showToast('Arquivo inválido — use um export do Grafite')
+      showToast('Arquivo inválido — use um export do Grafite Notas')
     }
   }
 
@@ -402,6 +409,20 @@ export default function SettingsPage() {
           <Row label="Efeitos de partícula">
             <Toggle value={particleEffects} onChange={setParticleEffects} />
           </Row>
+          <Row label="Fundo de galáxia no PC">
+            <Toggle value={galaxy} onChange={(v) => { setGalaxyOn(v); setGalaxy(v) }} />
+          </Row>
+        </Section>
+
+        <Section title="Conexões" icon={Waypoints}>
+          <Row label="Guardar ligações dentro do texto">
+            <Toggle value={linksInText} onChange={(v) => { setLinksInText(v); setLinksInTextState(v) }} />
+          </Row>
+          <p className="px-5 py-3 font-sans" style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: '18px' }}>
+            {linksInText
+              ? 'O “ligar” escreve [[Título]] na linha “Relacionadas:” no fim da nota.'
+              : 'O “ligar” guarda a ligação fora do texto: aparece em “Ligada a” e no grafo, mas não entra no conteúdo — copiar a nota não leva os links. Em cada nota dá para mover as ligações para dentro ou para fora.'}
+          </p>
         </Section>
 
         {/* 3. IA */}
@@ -422,6 +443,10 @@ export default function SettingsPage() {
           <p className="px-5 py-3 font-sans" style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: '18px' }}>
             Notas do Vault nunca são enviadas para a IA. No plano gratuito o Google pode usar o conteúdo enviado para melhorar os modelos.
           </p>
+        </Section>
+
+        <Section title="Voz" icon={Mic}>
+          <VoiceSettings />
         </Section>
 
         <Section title="Lembretes" icon={Bell}>

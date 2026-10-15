@@ -148,7 +148,7 @@ export default function ReminderSettings({ connected }: { connected: boolean }) 
       </div>
 
       <p className="font-sans" style={{ ...label, fontSize: 11, lineHeight: '16px' }}>
-        <strong>No relógio (Amazfit/Zepp):</strong> no app Zepp → seu relógio → Notificações de apps → ative “Notas” (ou “Chrome”, se o app não aparecer). Notas do Vault avisam só “Lembrete do Vault”, sem o conteúdo.
+        <strong>No relógio (Amazfit/Zepp):</strong> no app Zepp → seu relógio → Notificações de apps → ative “Grafite Notas” (ou “Chrome”, se o app não aparecer). Notas do Vault avisam só “Lembrete do Vault”, sem o conteúdo.
       </p>
     </div>
   )

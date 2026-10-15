@@ -38,4 +38,4 @@ Tipografia: **Inter** (sans, interface), **Newsreader** (serif, títulos, corpo 
 4. **Transição de página** ao abrir uma nota.
 5. **Onda de tinta** âmbar ao salvar (`.ink-wave`).
 
-E mais o **campo de partículas** (`ParticleField`) em três contextos: splash, gravação de voz e estados vazios.
+E mais o **campo de partículas** (`ParticleField`) em três contextos: splash, gravação de voz e estados vazios, e o **fundo de galáxia** nas laterais do PC (`GalaxyBackdrop`, cores tiradas do tema, desligável em Aparência).

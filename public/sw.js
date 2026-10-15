@@ -108,7 +108,7 @@ async function staleWhileRevalidate(request) {
 self.addEventListener('push', (event) => {
   let data = {}
   try { data = event.data ? event.data.json() : {} } catch { data = { body: event.data?.text() } }
-  const title = data.title || 'Notas'
+  const title = data.title || 'Grafite Notas'
   event.waitUntil(self.registration.showNotification(title, {
     body: data.body || '',
     tag: data.tag || 'lembrete',

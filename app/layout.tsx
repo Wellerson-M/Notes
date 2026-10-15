@@ -5,6 +5,8 @@ import './globals.css'
 import Splash from '@/components/Splash'
 import AppBoot from '@/components/AppBoot'
 import Toast from '@/components/Toast'
+import ListenBar from '@/components/ListenBar'
+import GalaxyBackdrop from '@/components/GalaxyBackdrop'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -28,13 +30,14 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Notas',
-  description: 'Suas notas pessoais',
+  title: 'Grafite Notas',
+  applicationName: 'Grafite Notas',
+  description: 'Suas notas pessoais, com IA, voz e conexões',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Notas',
+    title: 'Grafite Notas',
   },
   icons: {
     apple: '/icons/apple-touch-icon.png',
@@ -75,10 +78,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body style={{ backgroundColor: 'var(--bg-base)', color: 'var(--text-primary)', fontFamily: 'var(--font-sans)' }}>
+      {/* O fundo do body vem do globals.css (com a galáxia no PC ele fica transparente) */}
+      <body style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-sans)' }}>
+        <GalaxyBackdrop />
         <Splash />
         <AppBoot />
         {children}
+        <ListenBar />
         <Toast />
       </body>
     </html>

@@ -58,7 +58,7 @@ const b64ToBytes = (b64: string) => {
 export async function enablePush(publicKey: string): Promise<string | null> {
   if (!pushSupported()) return 'Este navegador não recebe notificações. No celular, use o app instalado pelo Chrome.'
   const perm = await Notification.requestPermission()
-  if (perm !== 'granted') return 'As notificações estão bloqueadas. Libere em Configurações do Android → Apps → Notas (ou Chrome) → Notificações.'
+  if (perm !== 'granted') return 'As notificações estão bloqueadas. Libere em Configurações do Android → Apps → Grafite Notas (ou Chrome) → Notificações.'
   const reg = await registration()
   if (!reg) return 'O app ainda está se instalando. Feche e abra de novo.'
   // Sempre uma inscrição nova: a antiga pode ter sido recusada pelo serviço de push (o servidor

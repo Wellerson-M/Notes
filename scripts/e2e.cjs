@@ -66,7 +66,7 @@ async function run(profile) {
   const title = `Nota ${P} ${String(Date.now()).slice(-7)}`
   await page.fill('input[placeholder="sem título"]', title)
   await page.getByText('Escreva aqui...').click()
-  await page.locator('textarea').first().fill('Comprar café\n- [ ] ligar para o banco\nver [[Bem-vindo ao Grafite]]')
+  await page.locator('textarea').first().fill('Comprar café\n- [ ] ligar para o banco\nver [[Bem-vindo ao Grafite Notas]]')
   await page.fill('input[placeholder="+ tag"]', 'teste'); await page.keyboard.press('Enter')
   await W(1800)
   await shot('03-editor')
@@ -89,7 +89,7 @@ async function run(profile) {
   ok(`${P}: abre a nota`, page.url().includes('/note?id='))
   ok(`${P}: conteúdo carregado`, await page.getByText('Comprar café').count())
   await shot('04b-nota-aberta')
-  await page.getByRole('link', { name: 'Bem-vindo ao Grafite' }).click(); await W(1500)
+  await page.getByRole('link', { name: 'Bem-vindo ao Grafite Notas' }).click(); await W(1500)
   ok(`${P}: wikilink abre a nota ligada`, await page.getByText('Primeiros passos').count())
   await page.goBack(); await W(1500)
   await page.getByRole('button', { name: 'Mais ações' }).click(); await W(600)

@@ -23,7 +23,8 @@ roda só no servidor em `/api/ai`.
 - Elemento `position: fixed` novo precisa da classe `.app-bar` ou `.app-fab` (coluna central no PC).
 - Página nova: adicionar em `PAGES` de `public/sw.js` para abrir offline.
 - Cores só via variáveis CSS de `app/globals.css` (há 7 temas; transparência = `rgba(var(--accent-rgb), x)`, texto sobre destaque = `var(--on-accent)`); animações ≤ 400ms; respeitar "Reduzir movimento" (ver `docs/DESIGN.md`).
-- Textos da interface em português do Brasil, com acentos.
+- Textos da interface em português do Brasil, com acentos. Nome do app: "Grafite Notas".
+- O `<body>` não tem fundo inline e o `main` não ganha `z-index` (fundo de galáxia no PC, ver ARQUITETURA → Layout).
 
 ## Comandos
 
@@ -34,6 +35,7 @@ npm run lint      # sem erros (2 avisos de <img> no NoteCard)
 npm run e2e       # ponta a ponta — SÓ com o servidor em MONGODB_DB=grafite-notas-e2e (o Atlas tem dados reais); ver docs/TESTES.md
 npm run e2e:gestos / e2e:voz   # gestos e ditado (sync e IA simulados)
 npm run e2e:lembretes          # notificações — também SÓ no banco de testes
+npm run e2e:novidades          # nota nova, ditado pela IA (fala real), ouvir, ligações, grafo — SÓ no banco de testes
 ```
 
 Variáveis de ambiente: veja `.env.example` (`MONGODB_URI`, `APP_PASSWORD`, `GEMINI_API_KEY`).

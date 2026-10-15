@@ -13,7 +13,13 @@ export type Note = {
     links?: { url: string; title: string; description: string; image: string }[]
   }
   tasks?: { text: string; done: boolean }[]
+  /** Derivado: os `[[ ]]` do texto somados às ligações de fora do texto (`links`) */
   linkedNoteIds?: string[]
+  /**
+   * Ligações guardadas FORA do texto (ids de notas), criadas pelo "ligar" das conexões.
+   * Não aparecem no conteúdo — copiar ou limpar a nota não as leva. No Vault vão dentro da cifra.
+   */
+  links?: string[]
   /** Exclusão lógica — necessária para o sync propagar deleções entre aparelhos */
   deleted?: boolean
   /**

@@ -109,7 +109,7 @@ export function icsEvent(note: Pick<Note, 'id' | 'title' | 'content' | 'updatedA
   return lines.map(fold)
 }
 
-export function icsCalendar(events: string[][], name = 'Notas'): string {
+export function icsCalendar(events: string[][], name = 'Grafite Notas'): string {
   return [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',

@@ -40,16 +40,23 @@ async function open(stored: LocalNote): Promise<LocalNote> {
 /** Forma gravada: notas do Vault vão cifradas e sem nenhum campo derivado do texto */
 async function seal(plain: LocalNote): Promise<LocalNote> {
   if (!plain.inVault) return { ...plain, cipher: undefined }
-  const cipher = await encrypt({ title: plain.title, content: plain.content, tags: plain.tags })
-  return { ...plain, title: null, content: '', tags: [], tasks: undefined, linkedNoteIds: undefined, cipher }
+  const cipher = await encrypt({ title: plain.title, content: plain.content, tags: plain.tags, ...(plain.links?.length ? { links: plain.links } : {}) })
+  return { ...plain, title: null, content: '', tags: [], tasks: undefined, linkedNoteIds: undefined, links: undefined, cipher }
 }
 
 async function allNotes(): Promise<Note[]> {
   const rows = await db.notes.toArray()
   const visible = (await Promise.all(rows.filter((n) => !n.deleted).map(open))).map(strip)
+  const alive = new Set(visible.map((n) => n.id))
   // Ligações [[Título]] calculadas na leitura: uma nota criada (ou renomeada) depois de quem a
-  // cita já aparece ligada, sem precisar regravar a outra
-  return visible.map((n) => (n.content.includes('[[') ? { ...n, linkedNoteIds: extractLinkedIds(n.content, visible) } : n))
+  // cita já aparece ligada, sem precisar regravar a outra. As de fora do texto (`links`) somam.
+  return visible.map((n) => {
+    const inText = n.content.includes('[[')
+    const fromText = (inText ? extractLinkedIds(n.content, visible) : n.linkedNoteIds) ?? []
+    const outside = (n.links ?? []).filter((id) => alive.has(id) && id !== n.id)
+    if (!outside.length) return inText ? { ...n, linkedNoteIds: fromText } : n
+    return { ...n, linkedNoteIds: [...new Set([...fromText, ...outside])] }
+  })
 }
 
 /** Campos derivados do conteúdo — recalculados a cada gravação */
@@ -132,7 +139,7 @@ export const notesRepo = {
       await snapshot(current, 'edit')
       await db.notes.put({
         ...current, deleted: true, content: '', title: null, tags: [], cipher: undefined,
-        tasks: undefined, linkedNoteIds: undefined, updatedAt: new Date().toISOString(), dirty: 1,
+        tasks: undefined, linkedNoteIds: undefined, links: undefined, updatedAt: new Date().toISOString(), dirty: 1,
       })
     })
     scheduleSync()

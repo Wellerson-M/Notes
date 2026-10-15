@@ -1,7 +1,7 @@
 import { GoogleGenAI, type GenerateContentParameters } from '@google/genai'
 import { isAuthenticated, unauthorized } from '@/lib/auth'
 import type { AIRequest, NoteDigest, TransformAction } from '@/lib/ai-types'
-import { EMBED_LABEL, MODEL_TIERS, pickTiers, type ModelPref, type ModelTier, type TaskInfo } from '@/lib/ai-models'
+import { DEFAULT_TTS_VOICE, EMBED_LABEL, MODEL_TIERS, TTS_VOICES, pickTiers, type ModelPref, type ModelTier, type TaskInfo } from '@/lib/ai-models'
 import { recordUsage, usageReport, type Outcome } from '@/lib/usage'
 
 /**
@@ -18,6 +18,20 @@ const EMBED_MODEL = process.env.GEMINI_EMBED_MODEL ?? EMBED_LABEL.defaultId
 const EMBED_DIMS = 256
 const MAX_IMAGE_B64 = 4_000_000
 const MAX_EMBED_TEXTS = 100
+/** A Vercel recusa corpos acima de 4,5 MB; um trecho de ditado (≤ 75s de opus) tem ~400 KB */
+const MAX_AUDIO_B64 = 3_500_000
+const MAX_SPEAK_CHARS = 700
+/**
+ * Voz natural: cada modelo de voz tem a própria cota grátis (poucos pedidos por minuto), então a
+ * rota passa para o próximo quando um estoura. Sem nenhum, o app usa a voz do aparelho.
+ */
+const TTS_MODELS = [
+  process.env.GEMINI_TTS_MODEL ?? 'gemini-3.8-flash-lite-tts',
+  'gemini-3.8-flash-tts',
+  'gemini-2.5-flash-preview-tts',
+]
+/** Modelo de voz que deu limite: pula ele por 1 minuto (a cota de voz é por minuto) */
+const ttsCooldown = new Map<string, number>()
 
 /** Folga para as tentativas (principal, repetição e reserva) caberem numa chamada só */
 export const maxDuration = 60
@@ -114,6 +128,13 @@ const OCR_PROMPT = `Transcreva todo o texto da imagem (pode ser foto de quadro, 
 Mantenha a estrutura em markdown: títulos, listas, tabelas simples e tarefas ("- [ ] ") quando houver.
 Corrija só erros óbvios de leitura. Devolva apenas o texto, sem comentários.
 Se a imagem não tiver texto, descreva-a em uma ou duas frases começando com "Imagem:".`
+
+const TRANSCRIBE_PROMPT = `Transcreva fielmente a fala do áudio, em português do Brasil, com pontuação e maiúsculas naturais.
+Não resuma, não responda, não traduza, não comente e não invente. Se não houver fala, devolva vazio.
+Se a pessoa ditar pontuação ("vírgula", "ponto final", "nova linha", "dois pontos"), aplique em vez de escrever a palavra.
+Tire hesitações ("é...", "hã", "tipo assim" usado como muleta) e repetições de palavra causadas por gaguejo.
+O CONTEXTO abaixo serve só para acertar a grafia de nomes, termos e assuntos que aparecerem no áudio — nunca copie dele.
+Devolva só a transcrição.`
 
 const REVIEW_RULES = `Escreva em markdown, curto e útil. Use exatamente estes títulos (sem acrescentar nada a eles)
 e pule a seção que ficar vazia — nunca escreva "nenhuma decisão" ou parecido:
@@ -251,6 +272,31 @@ export async function POST(request: Request) {
       return Response.json({ text: res.text?.trim() ?? '' })
     }
 
+    if (body.kind === 'transcribe') {
+      const mimeType = String(body.mimeType ?? '').split(';')[0]
+      if (typeof body.audio !== 'string' || !body.audio || body.audio.length > MAX_AUDIO_B64 || !/^audio\/(webm|ogg|mp4|mpeg|aac|wav|x-m4a)$/.test(mimeType)) {
+        return Response.json({ error: 'Áudio inválido ou longo demais.' }, { status: 400 })
+      }
+      const context = clip(String(body.context ?? ''), 2000)
+      const res = await generate({
+        contents: [{
+          role: 'user',
+          parts: [
+            { inlineData: { mimeType, data: body.audio } },
+            { text: `${TRANSCRIBE_PROMPT}\n\nCONTEXTO:\n${context || '(nenhum)'}` },
+          ],
+        }],
+      })
+      return Response.json({ text: res.text?.trim() ?? '' })
+    }
+
+    if (body.kind === 'speak') {
+      const text = String(body.text ?? '').trim().slice(0, MAX_SPEAK_CHARS)
+      if (!text) return Response.json({ error: 'Nada para ler.' }, { status: 400 })
+      const voice = TTS_VOICES.some((v) => v.id === body.voice) ? body.voice! : DEFAULT_TTS_VOICE
+      return Response.json(await speak(ai, text, voice))
+    }
+
     return Response.json({ error: 'tipo desconhecido' }, { status: 400 })
   } catch (err) {
     if ((err as { status?: number }).status === 429) {
@@ -330,13 +376,68 @@ function generator(ai: GoogleGenAI, [primary, backup]: [string, string]) {
   }
 }
 
+const TTS_TIMEOUT_MS = 25_000
+
+/**
+ * Texto → fala. Só o texto vai para o modelo: uma instrução de tom ("leia de forma calorosa")
+ * às vezes é lida em voz alta junto, e estes modelos não aceitam systemInstruction — o tom vem
+ * da voz escolhida. Passa para o próximo modelo quando um dá limite, sobrecarrega ou demora.
+ */
+async function speak(ai: GoogleGenAI, text: string, voice: string): Promise<{ audio: string; mimeType: string }> {
+  let lastErr: unknown = new Error('nenhum modelo de voz disponível')
+  const now = Date.now()
+  const order = [...TTS_MODELS.filter((m) => (ttsCooldown.get(m) ?? 0) < now), ...TTS_MODELS.filter((m) => (ttsCooldown.get(m) ?? 0) >= now)]
+  for (const model of order) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), TTS_TIMEOUT_MS)
+    try {
+      const res = await ai.models.generateContent({
+        model,
+        contents: text,
+        config: {
+          responseModalities: ['AUDIO'],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+          abortSignal: controller.signal,
+        },
+      })
+      const part = res.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)?.inlineData
+      if (!part?.data) throw new Error('o modelo não devolveu áudio')
+      void recordUsage(model, 'ok', res.usageMetadata)
+      return toWav(part.data, part.mimeType ?? '')
+    } catch (err) {
+      const error = controller.signal.aborted ? new Timeout(`${model} demorou demais`) : err
+      void recordUsage(model, outcomeOf(error), undefined, errorLabel(error))
+      if (statusOf(error) === 429) ttsCooldown.set(model, Date.now() + 60_000)
+      lastErr = error
+      if (!retryable(error) && statusOf(error) !== 404) throw error
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  throw lastErr
+}
+
+/** Os modelos 2.5 devolvem PCM cru (audio/L16; rate=24000): ganha um cabeçalho WAV para tocar no navegador */
+function toWav(b64: string, mimeType: string): { audio: string; mimeType: string } {
+  if (!/L16|pcm/i.test(mimeType)) return { audio: b64, mimeType: mimeType || 'audio/wav' }
+  const pcm = Buffer.from(b64, 'base64')
+  const rate = Number(mimeType.match(/rate=(\d+)/)?.[1] ?? 24000)
+  const header = Buffer.alloc(44)
+  header.write('RIFF', 0); header.writeUInt32LE(36 + pcm.length, 4); header.write('WAVE', 8)
+  header.write('fmt ', 12); header.writeUInt32LE(16, 16); header.writeUInt16LE(1, 20); header.writeUInt16LE(1, 22)
+  header.writeUInt32LE(rate, 24); header.writeUInt32LE(rate * 2, 28); header.writeUInt16LE(2, 32); header.writeUInt16LE(16, 34)
+  header.write('data', 36); header.writeUInt32LE(pcm.length, 40)
+  return { audio: Buffer.concat([header, pcm]).toString('base64'), mimeType: 'audio/wav' }
+}
+
 /** Tamanho do texto do pedido (para o Automático escolher o modelo) */
 function taskInfo(body: AIRequest): TaskInfo {
   const size =
     body.kind === 'transform' || body.kind === 'suggest' ? body.content.length
       : body.kind === 'review' ? body.notes.reduce((s, n) => s + n.text.length, 0)
         : body.kind === 'assistant' ? body.message.length
-          : 0
+          : body.kind === 'speak' ? String(body.text ?? '').length
+            : 0
   return { kind: body.kind, action: body.kind === 'transform' ? body.action : undefined, size }
 }
 

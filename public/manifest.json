@@ -1,7 +1,7 @@
 {
-  "name": "Notas",
-  "short_name": "Notas",
-  "description": "Suas notas pessoais",
+  "name": "Grafite Notas",
+  "short_name": "Grafite Notas",
+  "description": "Suas notas pessoais, com IA, voz e conexões",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",

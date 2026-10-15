@@ -8,19 +8,22 @@ import { relatedNotes, type Draft } from '@/lib/related'
 import { localVectors } from '@/lib/semantic'
 import { noteHref } from '@/lib/routes'
 import { getPreview } from '@/lib/notes'
+import { getLinksInText } from '@/lib/related'
 
 interface Props {
   draft: Draft
   notes: Note[]
-  /** Liga a nota (o [[Título]] vai para a linha "Relacionadas:" no fim, nunca no meio do texto) */
-  onLink: (title: string) => void
+  /** Ligações de fora do texto desta nota (ainda não gravadas, inclusive) */
+  linkedIds?: string[]
+  /** Liga a nota: fora do texto ou, se preferido em Ajustes, na linha "Relacionadas:" no fim */
+  onLink: (note: Note) => void
 }
 
 /**
  * "Conexões" da nota, estilo Obsidian: notas parecidas pelo conteúdo e pelas tags, calculadas no
  * aparelho. Um toque em "ligar" cria a ligação sem você digitar [[ ]] no meio do texto.
  */
-export default function RelatedNotes({ draft, notes, onLink }: Props) {
+export default function RelatedNotes({ draft, notes, linkedIds = [], onLink }: Props) {
   const [vectors, setVectors] = useState<Map<string, number[]> | undefined>()
   const [justLinked, setJustLinked] = useState<Record<string, true>>({})
 
@@ -42,13 +45,15 @@ export default function RelatedNotes({ draft, notes, onLink }: Props) {
   const related = useMemo(() => relatedNotes(settled, notes, { limit: 6, vectors }), [settled, notes, vectors])
   const linkedTitles = useMemo(() => new Set([...settled.content.matchAll(/\[\[([^\]]+)\]\]/g)].map((m) => m[1].trim().toLowerCase())), [settled.content])
 
-  const suggestions = related.filter((r) => !r.linked && !linkedTitles.has((r.note.title ?? '').toLowerCase()))
+  const suggestions = related.filter((r) => !r.linked && !linkedIds.includes(r.note.id) && !linkedTitles.has((r.note.title ?? '').toLowerCase()))
   if (!suggestions.length) return null
-  const linkable = suggestions.filter((r) => r.note.title && !justLinked[r.note.id])
+  // No texto, a ligação é um [[Título]]: nota sem título só dá para ligar por fora
+  const canLink = (n: Note) => !!n.title || !getLinksInText()
+  const linkable = suggestions.filter((r) => canLink(r.note) && !justLinked[r.note.id])
 
   const link = (n: Note) => {
-    if (!n.title) return
-    onLink(n.title)
+    if (!canLink(n)) return
+    onLink(n)
     setJustLinked((s) => ({ ...s, [n.id]: true }))
   }
 
@@ -94,11 +99,11 @@ export default function RelatedNotes({ draft, notes, onLink }: Props) {
                   {r.reason}
                 </p>
               </Link>
-              {r.note.title && (
+              {canLink(r.note) && (
                 <button
                   onClick={() => link(r.note)}
                   disabled={done}
-                  aria-label={`Ligar a ${r.note.title}`}
+                  aria-label={`Ligar a ${r.note.title || 'nota sem título'}`}
                   className="touch-feedback flex items-center gap-1 font-sans flex-shrink-0"
                   style={{
                     fontSize: 12, fontWeight: 600, borderRadius: 8, padding: '5px 10px', border: 'none',

@@ -16,6 +16,17 @@ export const MODEL_TIERS: Record<ModelTier, { label: string; description: string
 
 export const EMBED_LABEL = { label: 'Busca por sentido', defaultId: 'gemini-embedding-001', dailyLimit: 1000 }
 
+/** Vozes naturais do Gemini oferecidas em Ajustes → Ouvir (nomes do próprio Google) */
+export const TTS_VOICES: { id: string; label: string }[] = [
+  { id: 'Sulafat', label: 'Sulafat · calorosa' },
+  { id: 'Achird', label: 'Achird · amigável' },
+  { id: 'Aoede', label: 'Aoede · leve' },
+  { id: 'Leda', label: 'Leda · jovem' },
+  { id: 'Puck', label: 'Puck · animado' },
+  { id: 'Charon', label: 'Charon · sereno' },
+]
+export const DEFAULT_TTS_VOICE = 'Sulafat'
+
 export const MODEL_PREFS: { id: ModelPref; label: string; description: string }[] = [
   { id: 'auto', label: 'Automático', description: 'o Rápido em tudo; o Inteligente entra só de reserva' },
   { id: 'fast', label: MODEL_TIERS.fast.label, description: MODEL_TIERS.fast.description },

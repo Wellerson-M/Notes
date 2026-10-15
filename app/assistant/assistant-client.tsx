@@ -6,12 +6,13 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Mic, ArrowUp, Sparkles, FilePlus, FileText, ExternalLink, Check, PencilLine, Trash2 } from 'lucide-react'
 import type { AssistantAction, ChatTurn } from '@/lib/ai-types'
 import type { Note } from '@/lib/types'
-import { ai, AIError, AI_LOGIN_MESSAGE } from '@/lib/ai'
+import { ai, AIError, AI_LOGIN_MESSAGE, voiceContext } from '@/lib/ai'
 import ConnectInline from '@/components/ConnectInline'
 import { notesRepo, removeWithUndo, useNotes } from '@/lib/repo'
 import { useUIStore } from '@/store/ui'
 import { renderMarkdown } from '@/components/MarkdownEditor'
 import AudioRecorder from '@/components/AudioRecorder'
+import { ListenButton } from '@/components/ListenBar'
 import { getVoiceAutoSend } from '@/hooks/useSpeech'
 import SwipeBackWrapper from '@/components/SwipeBackWrapper'
 import { AIThinking } from '@/components/AISheets'
@@ -223,6 +224,9 @@ export default function AssistantClient({ initialQuery }: { initialQuery: string
                   <div className="font-serif" style={{ fontSize: 15, lineHeight: '24px', color: m.error ? 'var(--danger)' : 'var(--text-secondary)' }}>
                     {m.error && m.text === AI_LOGIN_MESSAGE ? <ConnectInline /> : m.error ? m.text : renderMarkdown(m.text)}
                   </div>
+                  {!m.error && m.text.length > 40 && (
+                    <div><ListenButton text={m.text} title="Resposta do assistente" id={`chat-${m.id}`} /></div>
+                  )}
 
                   {/* Notas citadas */}
                   {!!m.noteIds?.length && (
@@ -343,6 +347,7 @@ export default function AssistantClient({ initialQuery }: { initialQuery: string
             <AudioRecorder
               stopLabel="Enviar"
               autoSend={getVoiceAutoSend()}
+              getContext={() => voiceContext(notes ?? [])}
               onClose={() => setVoiceOpen(false)}
               onSave={(t) => { setVoiceOpen(false); void send(t) }}
             />

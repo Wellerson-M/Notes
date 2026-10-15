@@ -2,11 +2,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MoreVertical, Pin, Lock, Unlock, FileText, Trash2, BookOpen, GitFork, History, CalendarDays, BellOff, Check } from 'lucide-react'
+import { MoreVertical, Pin, Lock, Unlock, FileText, Trash2, BookOpen, GitFork, History, CalendarDays, BellOff, Check, Copy, Eraser, Volume2 } from 'lucide-react'
 import type { Note } from '@/lib/types'
 import type { Suggestions, TransformAction } from '@/lib/ai-types'
 import { notesRepo, removeWithUndo, useNotes, VaultLockedError } from '@/lib/repo'
-import { ai, AIError } from '@/lib/ai'
+import { ai, AIError, voiceContext } from '@/lib/ai'
 import { compressImage } from '@/lib/image'
 import * as vault from '@/lib/vault'
 import { useUIStore } from '@/store/ui'
@@ -17,9 +17,11 @@ import SyncIndicator from './SyncIndicator'
 import DictationBar from './DictationBar'
 import RelatedNotes from './RelatedNotes'
 import TagSuggest from './TagSuggest'
-import { addRelatedLink } from '@/lib/related'
+import { addRelatedLink, clearedContent, getLinksInText, splitRelatedLines, textForCopy } from '@/lib/related'
+import NoteLinks from './NoteLinks'
+import { reader } from '@/lib/reader'
 import BacklinksSection from './BacklinksSection'
-import NeighborhoodMap from './NeighborhoodMap'
+import GraphView from './GraphView'
 import SwipeBackWrapper from './SwipeBackWrapper'
 import { AIResultSheet, SuggestionsSheet } from './AISheets'
 import VersionsSheet from './VersionsSheet'
@@ -51,7 +53,7 @@ function SavingIndicator({ state }: { state: 'idle' | 'saving' | 'saved' }) {
   )
 }
 
-type Draft = { title: string; content: string; tags: string[]; schedule?: Schedule }
+type Draft = { title: string; content: string; tags: string[]; schedule?: Schedule; links: string[] }
 export type NoteDraft = { title: string; content: string; schedule?: Schedule }
 
 interface Props {
@@ -62,18 +64,22 @@ interface Props {
   initial?: NoteDraft
   /** Nota nova criada direto no Vault */
   inVault?: boolean
+  /** Nota nova acabou de ser gravada (a rota troca a URL para `?id=`) */
+  onCreated?: (id: string) => void
 }
 
-export default function NoteEditor({ note, mode = 'text', initial, inVault: newInVault = false }: Props) {
+export default function NoteEditor({ note, mode = 'text', initial, inVault: newInVault = false, onCreated }: Props) {
   const router = useRouter()
   const { savingState, setSavingState, showToast, vaultLocked } = useUIStore()
-  const allNotes = useNotes() ?? []
+  const liveNotes = useNotes()
+  const allNotes = useMemo(() => liveNotes ?? [], [liveNotes])
   const isNew = !note
 
   const initialContent = note?.content ?? initial?.content ?? INITIAL_CONTENT[mode] ?? ''
   const [title, setTitle] = useState(note?.title ?? initial?.title ?? '')
   const [content, setContent] = useState(initialContent)
   const [tags, setTags] = useState<string[]>(note?.tags ?? [])
+  const [links, setLinks] = useState<string[]>(note?.links ?? [])
   const [schedule, setSchedule] = useState<Schedule | undefined>(note?.schedule ?? initial?.schedule)
   const [scheduleOpen, setScheduleOpen] = useState(false)
   const [newTag, setNewTag] = useState('')
@@ -94,7 +100,9 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
   // Refs guardam o estado mais recente para o salvamento debounced e o flush ao sair
   const noteIdRef = useRef<string | null>(note?.id ?? null)
   const [noteId, setNoteId] = useState<string | null>(note?.id ?? null)
-  const draftRef = useRef<Draft>({ title, content, tags, schedule })
+  const draftRef = useRef<Draft>({ title, content, tags, schedule, links })
+  const onCreatedRef = useRef(onCreated)
+  useEffect(() => { onCreatedRef.current = onCreated }, [onCreated])
   const dirtyRef = useRef(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savingRef = useRef<Promise<void>>(Promise.resolve())
@@ -109,17 +117,18 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
     if (!dirtyRef.current) return savingRef.current
     dirtyRef.current = false
-    const { title: t, content: c, tags: tg, schedule: sc } = draftRef.current
-    const data = { title: t.trim() || null, content: c, tags: tg, schedule: sc }
+    const { title: t, content: c, tags: tg, schedule: sc, links: lk } = draftRef.current
+    const data = { title: t.trim() || null, content: c, tags: tg, schedule: sc, links: lk.length ? lk : undefined }
 
     savingRef.current = savingRef.current.then(async () => {
       if (noteIdRef.current) {
         await notesRepo.update(noteIdRef.current, data)
       } else {
         // Nota nova só nasce quando tiver algo além do conteúdo inicial do modo
-        if (!data.title && c.trim() === (INITIAL_CONTENT[mode] ?? '').trim() && !tg.length && !sc) return
+        if (!data.title && c.trim() === (INITIAL_CONTENT[mode] ?? '').trim() && !tg.length && !sc && !lk.length) return
         noteIdRef.current = (await notesRepo.create({ ...data, inVault: newInVault })).id
         setNoteId(noteIdRef.current)
+        onCreatedRef.current?.(noteIdRef.current)
       }
     }).catch((e) => {
       if (!(e instanceof VaultLockedError)) throw e
@@ -184,10 +193,86 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
     handleContentChange(base + (base.trim() ? '\n\n' : '') + extra)
   }
 
-  /** Liga outra nota pela linha "Relacionadas:" no fim — nunca no meio do texto */
-  const linkNote = (noteTitle: string) => handleContentChange(addRelatedLink(draftRef.current.content, noteTitle))
+  const updateLinks = (next: string[]) => { setLinks(next); scheduleSave({ links: next }) }
+
+  /**
+   * Liga outra nota: por padrão fora do texto (`links`); com "ligações no texto" ligado em
+   * Ajustes, pela linha "Relacionadas:" no fim — nunca no meio do texto
+   */
+  const linkNote = (target: Note) => {
+    if (getLinksInText() && target.title) return handleContentChange(addRelatedLink(draftRef.current.content, target.title))
+    const cur = draftRef.current.links
+    if (!cur.includes(target.id)) updateLinks([...cur, target.id])
+  }
+
+  const relatedInText = useMemo(() => splitRelatedLines(content).titles, [content])
+  const linkedNotes = useMemo(
+    () => links.map((id) => allNotes.find((n) => n.id === id)).filter((n): n is Note => !!n),
+    [links, allNotes],
+  )
+
+  /** Linha "Relacionadas:" → ligações fora do texto */
+  const moveLinksOut = () => {
+    const { body, titles } = splitRelatedLines(draftRef.current.content)
+    const ids = titles
+      .map((t) => allNotes.find((n) => n.title?.toLowerCase() === t.toLowerCase())?.id)
+      .filter((id): id is string => !!id)
+    handleContentChange(body)
+    updateLinks([...new Set([...draftRef.current.links, ...ids])])
+    showToast('Ligações fora do texto — continuam valendo no mapa')
+  }
+
+  /** Ligações de fora → linha "Relacionadas:" (as de notas sem título ficam de fora) */
+  const moveLinksIn = () => {
+    let next = draftRef.current.content
+    const keep: string[] = []
+    for (const id of draftRef.current.links) {
+      const n = allNotes.find((x) => x.id === id)
+      if (n?.title) next = addRelatedLink(next, n.title)
+      else if (n) keep.push(id)
+    }
+    handleContentChange(next)
+    updateLinks(keep)
+  }
 
   const draftForLinks = useMemo(() => ({ id: noteId ?? '', title: title || null, content, tags }), [noteId, title, content, tags])
+
+  /** Copia título e texto, sem as ligações (para colar em outra IA, e-mail...) */
+  const copyAll = async () => {
+    const text = textForCopy(title, draftRef.current.content)
+    if (!text.trim()) { showToast('Nada para copiar ainda'); return }
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      // http na rede local não tem clipboard: cai no jeito antigo
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      ta.remove()
+    }
+    try { navigator.vibrate?.(10) } catch { /* sem vibração */ }
+    showToast('Nota copiada — sem as ligações')
+  }
+
+  /** Apaga só o texto: título, tags, agenda e ligações ficam. A versão anterior vai para o histórico */
+  const clearContent = async () => {
+    const before = draftRef.current.content
+    if (!before.trim()) { showToast('A nota já está vazia'); return }
+    await flush()
+    if (noteIdRef.current) await notesRepo.checkpoint(noteIdRef.current)
+    handleContentChange(clearedContent(before))
+    showToast('Conteúdo apagado', { actionLabel: 'desfazer', onAction: () => { setContent(before); scheduleSave({ content: before }) } })
+  }
+
+  const listen = () => {
+    const body = draftRef.current.content
+    if (!body.trim() && !title.trim()) { showToast('Nada para ler ainda'); return }
+    reader.play((title.trim() ? `# ${title.trim()}\n\n` : '') + body, title.trim() || 'Nota', `note-${noteIdRef.current ?? 'nova'}`)
+  }
 
   const addTag = (tag: string) => {
     const t = tag.replace(/[^a-záéíóúàâêôãõç\w-]/gi, '').toLowerCase()
@@ -265,9 +350,12 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
     day: '2-digit', month: 'long', year: 'numeric',
   })
 
-  type SheetAction = 'pin' | 'vault' | 'read' | 'map' | 'history' | 'export' | 'delete'
+  type SheetAction = 'pin' | 'listen' | 'copy' | 'clear' | 'vault' | 'read' | 'map' | 'history' | 'export' | 'delete'
   const sheetActions: { id: SheetAction; Icon: typeof Pin; label: string; color: string }[] = [
     { id: 'pin', Icon: Pin, label: current?.pinned ? 'Soltar nota' : 'Fixar nota', color: 'var(--accent-amber)' },
+    { id: 'listen', Icon: Volume2, label: 'Ouvir nota', color: 'var(--text-secondary)' },
+    { id: 'copy', Icon: Copy, label: 'Copiar tudo (sem ligações)', color: 'var(--text-secondary)' },
+    { id: 'clear', Icon: Eraser, label: 'Apagar só o conteúdo', color: 'var(--text-secondary)' },
     {
       id: 'vault',
       Icon: current?.inVault ? Unlock : Lock,
@@ -300,6 +388,9 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
             showToast('Abra o Vault para mover notas', { actionLabel: 'abrir', onAction: () => router.push('/vault') })
           }
         })
+      case 'listen': return listen()
+      case 'copy': return copyAll()
+      case 'clear': return clearContent()
       case 'read': return setReadingMode(true)
       case 'map': return setMapOpen(true)
       case 'history': return withNote(async () => setVersionsOpen(true))
@@ -366,6 +457,15 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
                 <Check size={13} strokeWidth={2.6} /> Concluir
               </button>
             ) : (
+            <>
+            <button
+              onClick={() => void copyAll()}
+              className="touch-feedback"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 8, display: 'flex', alignItems: 'center' }}
+              aria-label="Copiar tudo"
+            >
+              <Copy size={17} style={{ color: 'var(--text-muted)' }} />
+            </button>
             <button
               onClick={() => setMapOpen(true)}
               className="touch-feedback"
@@ -374,6 +474,7 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
             >
               <GitFork size={18} style={{ color: 'var(--text-muted)' }} />
             </button>
+            </>
             )}
             <button
               onClick={() => setSheetOpen(true)}
@@ -489,8 +590,22 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
             />
           </div>
 
+          {!readingMode && (
+            <NoteLinks
+              linked={linkedNotes}
+              inTextCount={relatedInText.length}
+              onRemove={(id) => updateLinks(draftRef.current.links.filter((x) => x !== id))}
+              onMoveOut={moveLinksOut}
+              onMoveIn={moveLinksIn}
+            />
+          )}
           {!readingMode && !inVault && (
-            <RelatedNotes draft={draftForLinks} notes={allNotes} onLink={(t) => { linkNote(t); showToast(`Ligada a “${t}”`) }} />
+            <RelatedNotes
+              draft={draftForLinks}
+              notes={allNotes}
+              linkedIds={links}
+              onLink={(n) => { linkNote(n); showToast(`Ligada a “${n.title || 'nota sem título'}”`) }}
+            />
           )}
           {noteId && <BacklinksSection noteId={noteId} />}
         </div>
@@ -547,6 +662,7 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
                   background: 'var(--bg-surface)', borderRadius: '20px 20px 0 0',
                   borderTop: '1px solid var(--border-default)', zIndex: 65,
                   paddingBottom: 'env(safe-area-inset-bottom, 16px)',
+                  maxHeight: '85dvh', overflowY: 'auto',
                 }}
               >
                 <div style={{ width: 36, height: 4, background: 'var(--border-strong)', borderRadius: 2, margin: '12px auto' }} />
@@ -584,7 +700,7 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
               currentTags={tags}
               onApplyTitle={(t) => handleTitleChange(t)}
               onAddTag={(t) => updateTags([...draftRef.current.tags, t])}
-              onLinkNote={(n) => { if (n.title) linkNote(n.title); showToast('Conexão criada') }}
+              onLinkNote={(n) => { linkNote(n); showToast('Conexão criada') }}
               onAddIdea={(idea) => { appendContent(`- [ ] ${idea}`); showToast('Ideia adicionada como tarefa') }}
               onClose={() => setSuggestions(null)}
             />
@@ -622,13 +738,13 @@ export default function NoteEditor({ note, mode = 'text', initial, inVault: newI
           )}
         </AnimatePresence>
 
-        {noteId && (
-          <NeighborhoodMap noteId={noteId} open={mapOpen} onClose={() => setMapOpen(false)} />
-        )}
+        <GraphView open={mapOpen} focusId={noteId ?? undefined} onClose={() => setMapOpen(false)} />
 
         <AnimatePresence>
           {audioOpen && (
             <DictationBar
+              noAI={inVault}
+              getContext={() => (inVault ? '' : voiceContext(allNotes, editorRef.current?.before() ?? draftRef.current.content))}
               onClose={() => setAudioOpen(false)}
               onInsert={(t) => { insertAtCursor(t); setAudioOpen(false); showToast('Ditado inserido') }}
             />

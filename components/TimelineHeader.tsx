@@ -1,6 +1,8 @@
 'use client'
-import { Search, Sparkles } from 'lucide-react'
+import { useState } from 'react'
+import { Search, Sparkles, Waypoints } from 'lucide-react'
 import SyncIndicator from './SyncIndicator'
+import GraphView from './GraphView'
 import Link from 'next/link'
 
 interface Props {
@@ -8,6 +10,7 @@ interface Props {
 }
 
 export default function TimelineHeader({ showSearch = true }: Props) {
+  const [graphOpen, setGraphOpen] = useState(false)
 
   return (
     <div
@@ -23,13 +26,19 @@ export default function TimelineHeader({ showSearch = true }: Props) {
           className="font-serif font-semibold tracking-tight"
           style={{ fontSize: 20, color: 'var(--text-primary)' }}
         >
-          no
-          <span style={{ color: 'var(--accent-amber)' }}>t</span>
-          as
+          grafite <span style={{ color: 'var(--accent-amber)' }}>notas</span>
         </span>
 
         <div className="flex items-center gap-3">
           <SyncIndicator />
+          <button
+            onClick={() => setGraphOpen(true)}
+            aria-label="Grafo de conexões"
+            className="touch-feedback"
+            style={{ padding: 4, display: 'flex', background: 'none', border: 'none', cursor: 'pointer' }}
+          >
+            <Waypoints size={18} style={{ color: 'var(--text-secondary)' }} />
+          </button>
           <Link href="/assistant" aria-label="Assistente de IA" className="touch-feedback" style={{ padding: 4, display: 'flex' }}>
             <Sparkles size={18} style={{ color: 'var(--accent-amber)' }} />
           </Link>
@@ -72,6 +81,7 @@ export default function TimelineHeader({ showSearch = true }: Props) {
           </Link>
         </div>
       )}
+      <GraphView open={graphOpen} onClose={() => setGraphOpen(false)} />
     </div>
   )
 }

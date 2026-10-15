@@ -13,6 +13,8 @@ export type EditorHandle = {
   insert: (text: string, opts?: { block?: boolean }) => void
   /** Sai da edição (mesmo que tocar fora) — continua na nota */
   done: () => void
+  /** Texto antes do cursor (contexto para o ditado pela IA) */
+  before: () => string
 }
 
 interface Props {
@@ -172,8 +174,16 @@ export default function MarkdownEditor({ value, onChange, placeholder = 'Escreva
   useLayoutEffect(() => {
     const ta = textareaRef.current
     if (!ta) return
+    // Medir com height:auto encolhe a página por um instante, e o navegador puxa a rolagem
+    // para cima — o ponto onde se escreve sumia da tela em notas longas. Guarda e devolve.
+    const y = window.scrollY
     ta.style.height = 'auto'
     ta.style.height = `${Math.max(300, ta.scrollHeight)}px`
+    if (window.scrollY !== y) window.scrollTo(0, y)
+    if (pendingSel.current === null && document.activeElement === ta) {
+      // Digitando: mantém a linha do cursor acima do teclado e da barra de atalhos
+      scrollCaretIntoView(ta)
+    }
     if (pendingSel.current !== null) {
       const pos = Math.min(pendingSel.current, ta.value.length)
       pendingSel.current = null
@@ -226,7 +236,9 @@ export default function MarkdownEditor({ value, onChange, placeholder = 'Escreva
     setToolbarVisible(false)
   }, [])
 
-  useImperativeHandle(ref, () => ({ insert, done }), [insert, done])
+  const before = useCallback(() => valueRef.current.slice(0, currentSel().start), [currentSel])
+
+  useImperativeHandle(ref, () => ({ insert, done, before }), [insert, done, before])
 
   const handleToggleTask = useCallback((lineIndex: number) => {
     const lines = value.split('\n')
@@ -454,8 +466,11 @@ function scrollCaretIntoView(ta: HTMLTextAreaElement) {
   document.body.appendChild(mirror)
   const caretY = ta.getBoundingClientRect().top + mirror.scrollHeight
   mirror.remove()
-  const viewH = window.visualViewport?.height ?? window.innerHeight
-  const bottomLimit = viewH - 72 // barra de atalhos
+  // No iPhone o teclado cobre a página: vale a parte visível (visualViewport), e não a janela
+  const vv = window.visualViewport
+  const viewTop = vv?.offsetTop ?? 0
+  const viewH = vv?.height ?? window.innerHeight
+  const bottomLimit = viewTop + viewH - 72 // barra de atalhos
   if (caretY > bottomLimit) window.scrollBy({ top: caretY - bottomLimit + 24 })
-  else if (caretY < 90) window.scrollBy({ top: caretY - 120 })
+  else if (caretY < viewTop + 90) window.scrollBy({ top: caretY - viewTop - 120 })
 }

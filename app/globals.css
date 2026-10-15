@@ -440,4 +440,28 @@ body {
   .app-fab {
     right: calc(max(0px, 50% - var(--app-column) / 2) + 20px) !important;
   }
+
+  /* Fundo de galáxia nas laterais (components/GalaxyBackdrop.tsx). A camada fica com z-index
+     negativo; o body fica transparente e só a coluna (main) é opaca. Nada de z-index no main:
+     ele prenderia as folhas fixas de dentro abaixo da barra de navegação, que fica fora dele. */
+  .galaxy-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  html.galaxy-on body {
+    background-color: transparent;
+    background-image: none;
+  }
+
+  html.galaxy-on main {
+    min-height: 100dvh;
+    background-color: var(--bg-base);
+    background-image: var(--ambient);
+    background-attachment: fixed;
+    box-shadow: 0 0 80px rgba(var(--accent-rgb), 0.06), 0 0 0 1px rgba(var(--accent-rgb), 0.05);
+  }
 }

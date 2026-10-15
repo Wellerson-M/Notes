@@ -22,7 +22,7 @@ export class VaultLockedError extends Error {
   constructor() { super('O Vault está trancado') }
 }
 
-type Payload = { title: string | null; content: string; tags: string[] }
+type Payload = { title: string | null; content: string; tags: string[]; links?: string[] }
 
 /** Chaves derivadas da senha, por sal (normalmente um só) */
 let keys = new Map<string, CryptoKey>()
@@ -212,8 +212,8 @@ export async function enableBiometric(): Promise<boolean> {
   if (!isUnlocked() || !biometricSupported()) return false
   const cred = (await navigator.credentials.create({
     publicKey: {
-      rp: { name: 'Notas', id: location.hostname },
-      user: { id: random(16), name: 'vault', displayName: 'Vault das Notas' },
+      rp: { name: 'Grafite Notas', id: location.hostname },
+      user: { id: random(16), name: 'vault', displayName: 'Vault do Grafite Notas' },
       challenge: random(32),
       pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
       authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged' },

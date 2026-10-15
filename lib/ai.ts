@@ -59,6 +59,25 @@ export function buildDigests(notes: Note[], query = '', limit = 40, excludeId?: 
     }))
 }
 
+/**
+ * Contexto do ditado pela IA: títulos e tags das notas (nomes próprios, projetos, termos) e o
+ * texto logo antes do cursor. Só serve para acertar a grafia. O Vault fica de fora.
+ */
+export function voiceContext(notes: Note[], before = ''): string {
+  const visible = notes.filter((n) => !n.inVault && !n.cipher)
+  const titles = [...visible]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .map((n) => n.title?.trim())
+    .filter(Boolean)
+    .slice(0, 80)
+  const tags = [...new Set(visible.flatMap((n) => n.tags))].slice(0, 60)
+  return [
+    titles.length ? `Títulos das notas: ${titles.join('; ')}` : '',
+    tags.length ? `Tags: ${tags.join(', ')}` : '',
+    before.trim() ? `Texto logo antes de onde a fala vai entrar: …${before.slice(-400)}` : '',
+  ].filter(Boolean).join('\n')
+}
+
 const clipRaw = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}\n[...]` : text)
 
 export const ai = {
@@ -94,6 +113,14 @@ export const ai = {
   /** Foto (já comprimida no aparelho) → texto em markdown */
   ocr: (image: { base64: string; mimeType: string }) =>
     call<{ text: string }>({ kind: 'ocr', image: image.base64, mimeType: image.mimeType }).then((r) => r.text),
+
+  /** Um trecho de áudio do ditado → texto. `context` ajuda a acertar nomes e termos */
+  transcribe: (audio: { base64: string; mimeType: string }, context = '') =>
+    call<{ text: string }>({ kind: 'transcribe', audio: audio.base64, mimeType: audio.mimeType, context }).then((r) => r.text),
+
+  /** Texto (sem markdown) → áudio na voz natural escolhida */
+  speak: (text: string, voice?: string) =>
+    call<{ audio: string; mimeType: string }>({ kind: 'speak', text, voice }),
 
   embed: (texts: string[], task: 'document' | 'query') =>
     call<{ vectors: number[][] }>({ kind: 'embed', texts, task }).then((r) => r.vectors),

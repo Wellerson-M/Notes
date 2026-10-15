@@ -40,7 +40,7 @@ export default function AppBoot() {
       if ((await db.notes.count()) === 0) {
         await db.notes.put({
           id: 'bem-vindo',
-          title: 'Bem-vindo ao Grafite',
+          title: 'Bem-vindo ao Grafite Notas',
           content: WELCOME,
           tags: ['começo'],
           pinned: true,

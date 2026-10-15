@@ -206,3 +206,45 @@ export function addRelatedLink(content: string, title: string): string {
   const body = lines.join('\n')
   return `${body}${body.trim() ? '\n\n' : ''}Relacionadas: ${link}`
 }
+
+const RELATED_LINE = /^\s*relacionadas?:/i
+
+/**
+ * Separa as linhas "Relacionadas: [[A]] · [[B]]" do resto do texto.
+ * Devolve o texto sem elas e os títulos que estavam ali.
+ */
+export function splitRelatedLines(content: string): { body: string; titles: string[] } {
+  const titles: string[] = []
+  const kept = content.split('\n').filter((line) => {
+    if (!RELATED_LINE.test(line) || !line.includes('[[')) return true
+    for (const m of line.matchAll(/\[\[([^\]]+)\]\]/g)) titles.push(m[1].trim())
+    return false
+  })
+  return { body: kept.join('\n').replace(/\s+$/, ''), titles }
+}
+
+/**
+ * Texto para colar em outro lugar (outra IA, e-mail...): título como `#`, sem a linha
+ * "Relacionadas:" e com os [[links]] virando texto normal.
+ */
+export function textForCopy(title: string | null, content: string): string {
+  const body = splitRelatedLines(content).body.replace(/\[\[([^\]]+)\]\]/g, '$1').trim()
+  const t = title?.trim()
+  return t ? `# ${t}\n\n${body}` : body
+}
+
+/** Apaga o conteúdo, mas mantém a linha "Relacionadas:" (ligação não é conteúdo) */
+export function clearedContent(content: string): string {
+  return content.split('\n').filter((line) => RELATED_LINE.test(line) && line.includes('[[')).join('\n')
+}
+
+const LINKS_IN_TEXT_KEY = 'grafite-links-in-text'
+
+/** Onde o "ligar" guarda a ligação: fora do texto (padrão) ou na linha "Relacionadas:" */
+export function getLinksInText(): boolean {
+  try { return localStorage.getItem(LINKS_IN_TEXT_KEY) === '1' } catch { return false }
+}
+
+export function setLinksInText(on: boolean) {
+  try { localStorage.setItem(LINKS_IN_TEXT_KEY, on ? '1' : '0') } catch { /* modo privado */ }
+}
