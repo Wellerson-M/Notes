@@ -6,6 +6,7 @@ import { renderMarkdown } from './MarkdownEditor'
 import type { Suggestions } from '@/lib/ai-types'
 import { AI_LOGIN_MESSAGE } from '@/lib/ai'
 import ConnectInline from './ConnectInline'
+import { ListenButton } from './ListenBar'
 import type { Note } from '@/lib/types'
 
 const LOADING_LABELS: Record<string, string> = {
@@ -85,8 +86,11 @@ export function AIResultSheet({
         <AIError message={state.error} />
       ) : (
         <>
-          <div className="px-5 py-4 font-serif" style={{ fontSize: 15, lineHeight: '26px', color: 'var(--text-secondary)' }}>
+          <div className="px-5 pt-4 pb-2 font-serif" style={{ fontSize: 15, lineHeight: '26px', color: 'var(--text-secondary)' }}>
             {renderMarkdown(state.text ?? '')}
+          </div>
+          <div className="px-5 pb-3">
+            <ListenButton text={state.text ?? ''} title="Resultado da IA" id={`ai-${state.action}-${(state.text ?? '').length}`} />
           </div>
           <div className="flex gap-2 px-4 pb-4">
             <SheetButton label="Descartar" onClick={onClose} />

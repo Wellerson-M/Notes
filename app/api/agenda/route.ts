@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     .toArray()
 
   const events = notes.map((n) => icsEvent({ id: n._id, title: n.title, content: n.content, updatedAt: n.updatedAt, schedule: n.schedule }, `${url.origin}/note?id=${encodeURIComponent(n._id)}`))
-  return new Response(icsCalendar(events, 'Notas'), {
+  return new Response(icsCalendar(events, 'Grafite Notas'), {
     headers: {
       'Content-Type': 'text/calendar; charset=utf-8',
       'Content-Disposition': 'inline; filename="notas.ics"',

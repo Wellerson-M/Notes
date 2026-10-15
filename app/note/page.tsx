@@ -1,9 +1,10 @@
 'use client'
-import { Suspense } from 'react'
+import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Lock } from 'lucide-react'
 import { isLocked, useNote } from '@/lib/repo'
+import { noteHref } from '@/lib/routes'
 import NoteEditor, { type NoteDraft } from '@/components/NoteEditor'
 
 const blank = <div style={{ minHeight: '100dvh', background: 'var(--bg-base)' }} />
@@ -34,9 +35,25 @@ function NoteRoute() {
   const shared = sharedDraft(params) ?? (schedule ? { title: '', content: '' } : undefined)
   if (shared && schedule) shared.schedule = schedule
 
+  /**
+   * Nota nova que acabou de nascer: a URL troca para `?id=` (assim recarregar, o Android
+   * restaurar o app ou a atualização automática reabrem ESTA nota, e não uma em branco que
+   * viraria uma nota duplicada), mas o editor continua o mesmo — sem perder cursor e teclado.
+   */
+  const [adopted, setAdopted] = useState<{ id: string; key: string; mode: string; initial?: NoteDraft; inVault: boolean } | null>(null)
+  if (id && adopted?.id === id) {
+    const a = adopted
+    return <NoteEditor key={a.key} note={null} mode={a.mode} initial={a.initial} inVault={a.inVault} />
+  }
+
   // key: ao trocar de nota (wikilink) ou começar outra, o editor reinicia do zero
   if (!id) {
-    return <NoteEditor key={`new-${mode}-${params.toString()}`} note={null} mode={mode} initial={shared} inVault={inVault} />
+    const key = `new-${mode}-${params.toString()}`
+    const onCreated = (newId: string) => {
+      setAdopted({ id: newId, key, mode, initial: shared, inVault })
+      window.history.replaceState(null, '', noteHref(newId))
+    }
+    return <NoteEditor key={key} note={null} mode={mode} initial={shared} inVault={inVault} onCreated={onCreated} />
   }
   return <ExistingNote key={id} id={id} />
 }

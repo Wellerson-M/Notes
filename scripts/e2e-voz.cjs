@@ -37,6 +37,10 @@ function fakeAndroidSpeech() {
   }
   window.SpeechRecognition = FakeRecognition
   window.webkitSpeechRecognition = FakeRecognition
+  // Este teste é do motor do navegador (o padrão agora é o ditado pela IA)
+  try { localStorage.setItem('grafite-dictation-engine', 'browser') } catch { /* sem storage */ }
+  // O envio automático virou opcional (Ajustes → IA) em 13/10; o teste é dele
+  try { localStorage.setItem('grafite-voice-autosend', '1') } catch { /* sem storage */ }
 }
 
 ;(async () => {

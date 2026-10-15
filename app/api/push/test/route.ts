@@ -6,6 +6,6 @@ export async function POST(request: Request) {
   if (!(await isAuthenticated())) return unauthorized()
   const body = await request.json().catch(() => null) as { endpoint?: unknown } | null
   const only = typeof body?.endpoint === 'string' ? body.endpoint : undefined
-  const delivered = await sendToAll({ title: 'Notas', body: 'Os lembretes estão funcionando ✓', url: '/settings', tag: 'teste' }, only)
+  const delivered = await sendToAll({ title: 'Grafite Notas', body: 'Os lembretes estão funcionando ✓', url: '/settings', tag: 'teste' }, only)
   return Response.json({ delivered })
 }

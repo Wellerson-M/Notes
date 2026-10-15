@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { Square, RotateCcw } from 'lucide-react'
 import ParticleField from './ParticleField'
-import { useSpeech } from '@/hooks/useSpeech'
+import { useVoice } from '@/hooks/useVoice'
 
 interface Props {
   onClose: () => void
@@ -12,28 +12,31 @@ interface Props {
   stopLabel?: string
   /** Entrega sozinho quando a pessoa para de falar (assistente) */
   autoSend?: boolean
+  /** Nomes e termos das notas, para o ditado pela IA acertar a grafia (lido na hora) */
+  getContext?: () => string
 }
 
-export default function AudioRecorder({ onClose, onSave, stopLabel = 'Parar e inserir', autoSend = false }: Props) {
+export default function AudioRecorder({ onClose, onSave, stopLabel = 'Parar e inserir', autoSend = false, getContext }: Props) {
   const [elapsed, setElapsed] = useState(0)
-  const { listening, text: transcript, error, start, stop, reset } = useSpeech({ endOnSilence: autoSend })
+  const { listening, text: transcript, error, start, reset, finish, busy, ready, engine } = useVoice({ endOnSilence: autoSend, getContext })
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const delivered = useRef(false)
   const startedRef = useRef(false)
 
-  // Com autoSend, a escuta termina sozinha após a fala: entrega o texto na hora
+  // Com autoSend, a escuta termina sozinha após a fala: entrega o texto assim que estiver transcrito
   useEffect(() => {
     if (listening) { startedRef.current = true; return }
-    if (!autoSend || !startedRef.current || delivered.current || !transcript.trim()) return
+    if (!autoSend || busy || !startedRef.current || delivered.current || !transcript.trim()) return
     delivered.current = true
     onSave(transcript.trim())
-  }, [autoSend, listening, transcript, onSave])
+  }, [autoSend, listening, busy, transcript, onSave])
 
   useEffect(() => {
+    if (!ready) return
     start()
     timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000)
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [start])
+  }, [ready, start])
 
   useEffect(() => {
     if (!listening && timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
@@ -41,12 +44,15 @@ export default function AudioRecorder({ onClose, onSave, stopLabel = 'Parar e in
 
   const formatTime = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`
 
-  const handleStop = () => {
-    stop()
+  const [finishing, setFinishing] = useState(false)
+  const handleStop = async () => {
     if (timerRef.current) clearInterval(timerRef.current)
+    if (delivered.current || finishing) return
+    setFinishing(true)
+    const text = (await finish()).trim()
     if (delivered.current) return
     delivered.current = true
-    if (transcript.trim()) onSave(transcript.trim())
+    if (text) onSave(text)
     else onClose()
   }
 
@@ -150,7 +156,7 @@ export default function AudioRecorder({ onClose, onSave, stopLabel = 'Parar e in
       >
         {transcript || (
           <span className="italic" style={{ color: 'var(--text-muted)' }}>
-            {error ?? (listening ? (autoSend ? 'pode falar — envio quando você parar' : 'pode falar...') : '')}
+            {error ?? (finishing || busy ? 'transcrevendo...' : listening ? (autoSend ? 'pode falar — envio quando você parar' : engine === 'ai' ? 'pode falar — pausas não cortam' : 'pode falar...') : '')}
           </span>
         )}
         {transcript && error && (
@@ -183,7 +189,7 @@ export default function AudioRecorder({ onClose, onSave, stopLabel = 'Parar e in
         apagar
       </button>
       <motion.button
-        onClick={handleStop}
+        onClick={() => void handleStop()}
         whileTap={{ scale: 0.92 }}
         aria-label={stopLabel}
         style={{

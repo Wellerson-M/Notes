@@ -1,6 +1,6 @@
 # Grafite Notas — Estado e próximos passos
 
-> Última atualização: **13/10/2026**. Escrito para você (ou uma IA) retomar daqui a semanas sem reler o código.
+> Última atualização: **14/10/2026**. Escrito para você (ou uma IA) retomar daqui a semanas sem reler o código.
 > Detalhes técnicos em [ARQUITETURA.md](ARQUITETURA.md) · configuração em [DEPLOY.md](DEPLOY.md) · testes em [TESTES.md](TESTES.md).
 
 ## Se você só tem 5 minutos
@@ -18,15 +18,18 @@
 | Offline (service worker) | ✅ abre o app e qualquer nota sem rede |
 | Sync entre aparelhos (MongoDB Atlas, "última escrita vence") | ✅ |
 | Login (senha única por `APP_PASSWORD`) | ✅ |
-| Wikilinks `[[ ]]`, backlinks, "conectar todas", mapa de conexões | ✅ |
+| Wikilinks `[[ ]]`, backlinks, "conectar todas" | ✅ |
+| **Grafo de conexões** estilo Obsidian (física, arrastar, zoom, destaque de vizinhos; da nota ou de todas) | ✅ canvas; para sozinho quando assenta |
+| **Ligações fora do texto** (`links`), "Copiar tudo" sem links e "Apagar só o conteúdo" | ✅ "dentro do texto" continua possível (Ajustes → Conexões) |
 | Diário + heatmap + **resumo da semana** pela IA | ✅ |
 | Busca: texto, tags, datas e **por sentido** (embeddings do Gemini, no aparelho) | ✅ |
 | IA no editor (sugestões, resumir, tarefas, expandir, traduzir, corrigir, tópicos) | ✅ precisa de `GEMINI_API_KEY`; cai para o modelo leve se o principal sobrecarregar |
 | **Foto → texto** (OCR pelo Gemini; a foto não é guardada) | ✅ |
 | Assistente conversacional (texto e voz, propõe criar, acrescentar e abrir nota) | ✅ precisa de `GEMINI_API_KEY` |
-| Ditado por voz (Web Speech API) | ✅ Chrome, Edge e Safari; não funciona no Firefox |
+| Ditado por voz **pela IA** (grava e o Gemini transcreve; pausas não cortam) | ✅ padrão; o do navegador continua em Ajustes → Voz. O Vault usa só o do navegador |
+| **Ouvir** nota, resumo da IA e respostas do assistente | ✅ voz natural do Gemini (cota pequena por minuto) e, quando acaba, a voz do aparelho |
 | Atualização automática do app instalado | ✅ |
-| Layout PC (coluna central) | ✅ |
+| Layout PC (coluna central) + **fundo de galáxia** nas laterais | ✅ desligável em Ajustes → Aparência |
 | **Vault cifrado** (AES-GCM no aparelho, senha própria, biometria opcional, tranca sozinho) | ✅ o Atlas só vê o cifrado |
 | **Histórico de versões** (a cada 10 min de edição e em todo conflito de sync) | ✅ só no aparelho; menu da nota → Versões anteriores |
 | Backup completo (.json, Vault cifrado) e exportação em Markdown (.zip) | ✅ + "Enviar backup" (Drive/e-mail), lembrete a cada 14 dias e **cópia diária automática no servidor** (14 dias) |
@@ -47,7 +50,7 @@
 | D1 | Usuário único, vários aparelhos, login por senha | Sem cadastro e sem custo; trocar a senha desloga tudo |
 | D2 | Local-first: Dexie no aparelho + MongoDB Atlas M0 | Funciona offline; o Atlas é grátis |
 | D3 | Sem shadcn/ui; estilo inline com tokens CSS | Manter os componentes que já existiam |
-| D4 | Nome visível "Notas" (manifest e título) | Discrição; o repositório e os docs chamam "Grafite Notas" |
+| D4 | Nome visível **"Grafite Notas"** (desde 14/10; antes era só "Notas") | Nome oficial. Chaves internas (banco, cookie, localStorage, IndexedDB) já eram `grafite` e não mudam; o domínio da Vercel e o repositório `Notes` também não (trocar o domínio apagaria os dados locais de cada aparelho) |
 | D5 | IA = Google Gemini, plano gratuito, só no servidor | Sem custo; o Vault nunca é enviado |
 | D6 | Hospedagem Vercel Hobby | Grátis, deploy a cada push |
 | D7 | Rota `/note?id=` (estática) em vez de `/note/[id]` | Offline para qualquer nota |
@@ -77,7 +80,11 @@ Hoje, quando dois aparelhos editam a mesma nota offline, a versão mais nova ven
 Barra acima do teclado (Android e iPhone), gatilhos `-` e `/`, "Concluir", ditado no cursor com "apagar", assistente sem cortar a fala, trocar senha do Vault com dois aparelhos.
 **Pronto quando:** tudo funcionar no aparelho real; anotar aqui o que falhar.
 
-### 6. Segurança (opcional)
+### 6. Testar no celular as melhorias de 14/10
+Ditado pela IA (pausar e voltar a falar logo), "Ouvir" com a voz natural, grafo com o dedo (pinça, arrastar, tocar para destacar e abrir), escrever no fim de uma nota longa com o teclado aberto, e o app instalado mostrando "Grafite Notas" (o Android pode pedir para confirmar o nome novo).
+**Pronto quando:** tudo funcionar no aparelho real; anotar aqui o que falhar.
+
+### 7. Segurança (opcional)
 - Verificação em duas etapas (TOTP, app autenticador) no login do app.
 - Limite de tentativas de login por IP (hoje só há 800ms de atraso por erro).
 
@@ -98,6 +105,7 @@ Barra acima do teclado (Android e iPhone), gatilhos `-` e `/`, "Concluir", ditad
 
 ## Histórico
 
+- **14/10/2026** — Nota nova troca a URL para `?id=` assim que nasce (recarregar, a atualização automática ou o Android restaurar o app abriam uma nota em branco que virava duplicata). Editor: medir a altura do texto encolhia a página e jogava o cursor para fora da tela em notas longas. Ditado pela IA (MediaRecorder + Gemini, trechos cortados nas pausas, contexto com títulos e tags para acertar nomes). "Ouvir" (voz natural do Gemini com reserva na voz do aparelho). Ligações fora do texto (`links`), "Copiar tudo" sem links, "Apagar só o conteúdo". Grafo de conexões novo (canvas, física própria). Fundo de galáxia no PC. Nome oficial "Grafite Notas". Teste `npm run e2e:novidades`.
 - **13/10/2026** — IA: o "sobrecarregada" vinha do Flash (45–90s no plano grátis) como principal no Automático e sem tempo máximo no reserva; agora Flash-Lite em tudo, repetição de 1s no 503, 15s por tentativa e último erro visível em Ajustes. Editor: barra de atalhos acima do teclado, gatilhos `-` e `/`, "Concluir", cursor na linha tocada, textarea que cresce (o fim de notas longas sumia). Ditado na nota em barra compacta, inserido no cursor, com "Apagar o que falei" (o reset antigo deixava o texto voltar); assistente não corta mais a fala (envio automático opcional, 2,8s). Conexões e tags sugeridas por conteúdo. Assistente com `edit_note`/`delete_note`, texto completo das notas relevantes e índice de títulos. Troca de senha do app (hash scrypt no Atlas) e do Vault (recifra tudo). Backup: enviar para o Drive, lembrete e cópia diária no servidor.
 - **12/10/2026 (7)** — Lembretes por notificação (Web Push com chaves VAPID derivadas da `APP_PASSWORD`): ligar por aparelho em Ajustes → Lembretes, aviso padrão para notas com hora (15 min antes) e do dia todo (no dia, às 9h), escolha por nota em "agendar" (vários avisos ou "sem aviso"), notificação com "Adiar 10 min" e "Abrir", Vault avisa sem conteúdo. Disparo por `/api/push/tick` (cron-job.org a cada minuto) e de carona em cada sync; nunca avisa duas vezes. Teste `npm run e2e:lembretes`.
 

@@ -18,6 +18,8 @@
 └──────────────────────────────────┘                    └───────────────────┘
 ```
 
+**Nota nova:** assim que ela é gravada pela primeira vez, a rota troca a URL para `/note?id=` com `history.replaceState`, sem remontar o editor (`NoteRoute` "adota" a nota). Antes, recarregar ou o Android restaurar o app abria uma nota em branco que virava duplicata.
+
 **Princípio:** o aparelho nunca espera a rede. Tudo grava primeiro no IndexedDB, e a interface reage ao banco local. A nuvem é uma cópia que serve para levar as notas a outros aparelhos.
 
 ## Mapa do código
@@ -83,7 +85,8 @@ scripts/e2e*.cjs         testes ponta a ponta (geral, gestos, voz, lembretes)
 | `title`, `content` | `content` é markdown |
 | `createdAt`, `updatedAt` | ISO 8601; `updatedAt` decide os conflitos |
 | `tags`, `pinned`, `inVault` | |
-| `tasks`, `linkedNoteIds` | **derivados** do conteúdo a cada gravação (`- [ ]` e `[[Título]]`) |
+| `tasks`, `linkedNoteIds` | **derivados**: tarefas do conteúdo; ligações = `[[Título]]` do texto (calculadas na leitura) + `links` |
+| `links` | ligações **fora do texto** (ids), criadas pelo "ligar". No Vault vão dentro da cifra |
 | `deleted` | exclusão lógica, necessária para o sync levar a deleção aos outros aparelhos |
 | `cipher` | só em notas do Vault: título, conteúdo e tags cifrados. Os campos em claro ficam vazios |
 | `attachments` | estrutura herdada do protótipo; fotos e áudio ainda não existem de verdade |
@@ -161,7 +164,18 @@ A chave do Gemini fica só no servidor. O modelo padrão é `gemini-flash-lite-l
 
 **Erros:** `503` quando falta a chave ou o Google está sobrecarregado, `429` quando o limite gratuito acaba e `502` nos demais casos. Todos viram mensagens em português na interface.
 
-## Voz (`hooks/useSpeech.ts`)
+## Voz (`hooks/useVoice.ts`)
+
+`useVoice` escolhe o motor (Ajustes → Voz, guardado no aparelho) e entrega a mesma interface para o ditado da nota (`DictationBar`) e o assistente (`AudioRecorder`):
+
+- **Pela IA (padrão, `hooks/useAIDictation.ts`):** `MediaRecorder` grava sem parar (webm/opus, 32 kbps) e um medidor de volume (`AnalyserNode`) acha as pausas. A gravação é fatiada **sempre numa pausa** (trecho ≥ 10s e 650ms de silêncio; depois de 40s bastam 220ms; com 75s corta de qualquer jeito), abrindo o gravador novo antes de fechar o antigo, sem buraco. Cada trecho com fala vai para `/api/ai` (`kind: 'transcribe'`) e o texto aparece em blocos. O contexto (`voiceContext`: títulos e tags das notas + texto antes do cursor) só ajuda a acertar a grafia. Trecho que falha fica para "tentar de novo". Notas do Vault usam só o motor do navegador.
+- **Do navegador:** ver abaixo.
+
+## Ouvir (`lib/reader.ts`, `components/ListenBar.tsx`)
+
+Um leitor único para o app (a barra fica no topo, em qualquer tela). O markdown vira texto corrido (`speechText`) e é dividido em trechos que terminam em frase (o 1º curto, para começar logo). **Voz natural:** `/api/ai` `kind: 'speak'` → modelos de voz do Gemini. Só o texto vai para o modelo: uma instrução de tom às vezes era lida em voz alta, e esses modelos não aceitam `systemInstruction`. Cada modelo de voz tem cota própria de poucos pedidos por minuto; a rota passa para o próximo e deixa de lado por 1 minuto o que deu 429. Se nenhum responder, o leitor continua do mesmo trecho com a **voz do aparelho** (`speechSynthesis`, escolhendo a pt-BR mais natural) e avisa. O próximo trecho é pedido enquanto o atual toca; os áudios ficam em cache na memória.
+
+## Voz do navegador (`hooks/useSpeech.ts`)
 
 Usa `SpeechRecognition`/`webkitSpeechRecognition` em `pt-BR`, com resultados parciais. O navegador encerra a escuta em silêncios longos, e o hook reinicia sozinho enquanto o usuário não para. **Android:** o modo contínuo do Chrome repete a frase a cada resultado ("oi" → "oi tudo" → "oi tudo bem"), então lá é uma frase por sessão; e o texto é sempre remontado da lista inteira de resultados e juntado por `joinSpeech`, que tira repetições e sobreposições. Funciona no Chrome (Android e desktop), no Edge e no Safari (iOS 14.5+). No Firefox não existe: aparece uma mensagem pedindo o Chrome. Exige HTTPS (ou localhost) e permissão de microfone.
 
@@ -172,16 +186,21 @@ Usa `SpeechRecognition`/`webkitSpeechRecognition` em `pt-BR`, com resultados par
 ## Editor (`components/MarkdownEditor.tsx`)
 
 - **Prévia × edição:** a nota aparece formatada; tocar numa linha abre o textarea com o cursor **naquela linha** (cada linha da prévia tem `data-line`).
-- **Altura:** o textarea cresce com o texto (sem rolagem interna) e a tela ganha folga embaixo enquanto se escreve, para o fim de notas longas subir acima do teclado.
+- **Altura:** o textarea cresce com o texto (sem rolagem interna) e a tela ganha folga embaixo enquanto se escreve. Medir a altura (`height: auto`) encolhe a página por um instante e o navegador puxava a rolagem para cima; a rolagem é guardada e devolvida, e a linha do cursor é mantida acima do teclado a cada tecla.
 - **Barra acima do teclado** (`EditorAccessory`): ditar, tarefa, lista, numerada, título, negrito, ligar nota, citação, divisória, data e hora, e **Concluir** (sai da edição e fica na nota; também no topo). Os botões não tiram o foco do texto. No Android a página encolhe com o teclado (`interactive-widget=resizes-content` no layout); no iPhone, `useKeyboardInset` sobe a barra pela `visualViewport`.
 - **Gatilhos no começo da linha:** `-` oferece lista, tarefa ou divisória; `/` abre o menu de inserir. Enter continua listas e numeração; Enter num item vazio encerra a lista.
 - **Controle por fora** (`ref` → `EditorHandle`): `insert(texto, { block })` no último cursor conhecido (ditado, templates) e `done()`.
+
+## Grafo de conexões (`lib/graph.ts`, `components/GraphView.tsx`)
+
+Aberto pelo ícone da nota (grafo local, 1 ou 2 níveis, ou "Todas") e pelo ícone ao lado do ✨ na timeline (todas). Nós = notas fora do Vault, arestas = `linkedNoteIds` em qualquer direção, tamanho pelo número de ligações. Física enxuta no estilo d3-force (repulsão n², molas, colisão, gravidade), começando numa espiral; `alpha` esfria e **a simulação para** (nenhum quadro desenhado com o grafo parado). Canvas com zoom (roda/pinça), arrastar nó (reaquece), arrastar o fundo, destaque dos vizinhos com o resto esmaecido, rótulos que aparecem com o zoom e busca que destaca. No celular, o 1º toque destaca e o 2º (ou o botão) abre. Renderizado num portal no `<body>`.
 
 ## Conexões e tags sugeridas (`lib/related.ts`)
 
 Tudo no aparelho, sem IA: cada nota vira um vetor TF-IDF das palavras (sem acento, sem palavras vazias, com radical simples para plural/gênero). A semelhança soma o cosseno, tags em comum e, se já existirem, os vetores da busca por sentido (`localVectors`, sem chamar a IA). O Vault fica de fora.
 
-- **Conexões sugeridas** (`RelatedNotes`, no fim da nota): até 6 notas parecidas com o motivo ("#viagem em comum", "fala de orçamento, praia"). "Ligar" põe `[[Título]]` na linha **`Relacionadas:`** no fim da nota (`addRelatedLink`), nunca no meio do texto. O mesmo vale para "ligar" nas sugestões da IA.
+- **Conexões sugeridas** (`RelatedNotes`, no fim da nota): até 6 notas parecidas com o motivo ("#viagem em comum", "fala de orçamento, praia"). "Ligar" grava a ligação **fora do texto** (`links`, seção "Ligada a" em `NoteLinks`); com Ajustes → Conexões → "Guardar ligações dentro do texto", põe `[[Título]]` na linha **`Relacionadas:`** no fim (`addRelatedLink`). Em cada nota dá para mover as ligações para dentro ou para fora. O mesmo vale para "ligar" nas sugestões da IA.
+- **Copiar tudo** (`textForCopy`): título como `#`, sem a linha "Relacionadas:" e com `[[X]]` virando `X`. **Apagar só o conteúdo** (`clearedContent`) mantém título, tags, agenda e ligações; a versão anterior vai para o histórico e o toast tem "desfazer".
 - **Tags** (`TagSuggest`): digitando no "+ tag", completa com as tags que já existem; sem digitar, sugere as tags existentes que combinam com o texto ou com as notas parecidas e, se faltar, até 2 palavras fortes do texto como tag nova.
 
 ## Backup
@@ -241,4 +260,4 @@ Sete temas, cada um é um bloco `:root[data-theme="<id>"], [data-theme="<id>"]` 
 
 ## Layout celular × PC
 
-Mobile-first, com base de 380px. A partir de 760px de largura, `globals.css` limita `main` a 680px centralizados. Elementos fixos com a classe `.app-bar` (barras e folhas) e `.app-fab` (botões flutuantes) acompanham a coluna. **Todo elemento `position: fixed` novo precisa de uma dessas classes.** No PC, `Esc` fecha as folhas.
+Mobile-first, com base de 380px. A partir de 760px de largura, `globals.css` limita `main` a 680px centralizados. Nas laterais fica o **fundo de galáxia** (`GalaxyBackdrop`): uma camada estática desenhada uma vez por tamanho/tema (nebulosas nas cores do tema, faixa de estrelas, galáxia espiral) e outra com estrelas cintilando e estrelas cadentes a 30 qps, parada com "Reduzir movimento" e com a aba escondida. Ela fica em `z-index: -1`; ligada (`html.galaxy-on`), o `body` fica transparente e o `main` opaco. Por isso **o `body` não pode ter fundo inline** e o `main` não pode ganhar `z-index`. Elementos fixos com a classe `.app-bar` (barras e folhas) e `.app-fab` (botões flutuantes) acompanham a coluna. **Todo elemento `position: fixed` novo precisa de uma dessas classes.** No PC, `Esc` fecha as folhas.

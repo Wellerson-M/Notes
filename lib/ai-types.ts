@@ -25,6 +25,13 @@ export type AIRequest =
   | { kind: 'embed'; texts: string[]; task: 'document' | 'query' }
   /** Retrospectiva de um período (diário) */
   | { kind: 'review'; period: string; notes: NoteDigest[] }
+  /**
+   * Ditado pela IA: um trecho de áudio gravado no aparelho (base64, sem o prefixo data:).
+   * `context` = nomes e termos das notas e o texto antes do cursor, para acertar a grafia.
+   */
+  | { kind: 'transcribe'; audio: string; mimeType: string; context?: string }
+  /** Voz natural: um trecho de texto (já sem markdown) vira áudio .wav */
+  | { kind: 'speak'; text: string; voice?: string }
 
 export type Suggestions = {
   title: string

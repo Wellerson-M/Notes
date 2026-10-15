@@ -68,7 +68,7 @@ export default function Splash() {
               letterSpacing: 0.5,
             }}
           >
-            Grafite
+            Grafite Notas
           </motion.span>
         </motion.div>
       )}

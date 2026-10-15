@@ -46,7 +46,11 @@ E2E_PASSWORD=<sua APP_PASSWORD> npm run e2e                 # terminal 2 (PowerS
 
 ## Teste da voz (`npm run e2e:voz`)
 
-`scripts/e2e-voz.cjs` troca o reconhecimento de voz do navegador por um simulado que se comporta como o Chrome do **Android**: repete a frase inteira a cada resultado e encerra a sessão a cada pausa. O teste confere que o texto chega ao assistente sem repetições e é enviado sozinho quando a fala termina. A IA e o sync são simulados.
+`scripts/e2e-voz.cjs` troca o reconhecimento de voz do navegador por um simulado que se comporta como o Chrome do **Android**: repete a frase inteira a cada resultado e encerra a sessão a cada pausa. O teste confere que o texto chega ao assistente sem repetições e é enviado sozinho quando a fala termina. A IA e o sync são simulados. Fixa o motor do navegador e o envio automático (o padrão agora é o ditado pela IA, sem envio automático).
+
+## Teste das novidades de 14/10 (`npm run e2e:novidades`)
+
+`scripts/e2e-novidades.cjs` (mesmo servidor de testes e `E2E_PASSWORD`; IA de verdade): nota nova vira `?id=` e reabre a mesma depois de F5; o cursor não sai da tela escrevendo 45 linhas; "ligar" grava fora do texto; "Copiar tudo" sem "Relacionadas:" e sem `[[ ]]`; "tirar do texto"; "Apagar só o conteúdo" e desfazer; **ditado pela IA com uma fala pt-BR real** no microfone simulado do Chrome (gerada pela voz "Maria" do Windows em `.e2e/fala.wav`; as duas frases precisam entrar apesar da pausa); "Ouvir" começa a tocar; o grafo abre e **não desenha nenhum quadro parado**; a galáxia aparece no PC. Gasta poucos pedidos da cota de voz (que é por minuto).
 
 ## Teste dos lembretes (`npm run e2e:lembretes`)
 

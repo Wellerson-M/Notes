@@ -12,6 +12,7 @@ import { AIThinking, AIError as AIErrorMessage } from '@/components/AISheets'
 import { renderMarkdown } from '@/components/MarkdownEditor'
 import type { Note } from '@/lib/types'
 import { getPreview } from '@/lib/notes'
+import { ListenButton } from '@/components/ListenBar'
 import { notesRepo, useNotes } from '@/lib/repo'
 import { ai, AIError } from '@/lib/ai'
 import { noteHref } from '@/lib/routes'
@@ -281,8 +282,11 @@ export default function AgendaPage() {
               <AIErrorMessage message={review.error} />
             ) : (
               <>
-                <div className="px-5 py-4 font-serif" style={{ fontSize: 15, lineHeight: '26px', color: 'var(--text-secondary)' }}>
+                <div className="px-5 pt-4 pb-2 font-serif" style={{ fontSize: 15, lineHeight: '26px', color: 'var(--text-secondary)' }}>
                   {renderMarkdown(review.text ?? '')}
+                </div>
+                <div className="px-5 pb-3">
+                  <ListenButton text={review.text ?? ''} title={`Semana · ${review.period}`} id={`review-${review.period}`} />
                 </div>
                 <div className="flex gap-2 px-4 pb-4">
                   <button
