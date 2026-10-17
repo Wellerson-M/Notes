@@ -1,6 +1,6 @@
 # Grafite Notas — Estado e próximos passos
 
-> Última atualização: **14/10/2026**. Escrito para você (ou uma IA) retomar daqui a semanas sem reler o código.
+> Última atualização: **17/10/2026**. Escrito para você (ou uma IA) retomar daqui a semanas sem reler o código.
 > Detalhes técnicos em [ARQUITETURA.md](ARQUITETURA.md) · configuração em [DEPLOY.md](DEPLOY.md) · testes em [TESTES.md](TESTES.md).
 
 ## Se você só tem 5 minutos
@@ -19,7 +19,9 @@
 | Sync entre aparelhos (MongoDB Atlas, "última escrita vence") | ✅ |
 | Login (senha única por `APP_PASSWORD`) | ✅ |
 | Wikilinks `[[ ]]`, backlinks, "conectar todas" | ✅ |
-| **Grafo de conexões** estilo Obsidian (física, arrastar, zoom, destaque de vizinhos; da nota ou de todas) | ✅ canvas; para sozinho quando assenta |
+| **Grafo de conexões** estilo Obsidian (física, arrastar, zoom, destaque de vizinhos; da nota ou de todas) | ✅ canvas num céu de galáxia com estrelas em paralaxe; para sozinho quando assenta |
+| **Conexões indiretas** no grafo (notas que falam da mesma coisa: palavras raras, nomes, tags, título citado) | ✅ pontilhadas, com o motivo ao destacar; desligáveis no chip "indiretas" |
+| **Links da web** nas notas (botão "link" na barra do teclado e no `/`; endereços soltos viram link) | ✅ |
 | **Ligações fora do texto** (`links`), "Copiar tudo" sem links e "Apagar só o conteúdo" | ✅ "dentro do texto" continua possível (Ajustes → Conexões) |
 | Diário + heatmap + **resumo da semana** pela IA | ✅ |
 | Busca: texto, tags, datas e **por sentido** (embeddings do Gemini, no aparelho) | ✅ |
@@ -104,6 +106,8 @@ Ditado pela IA (pausar e voltar a falar logo), "Ouvir" com a voz natural, grafo 
 - [ ] Atualizar esta página (estado, próximos passos e histórico).
 
 ## Histórico
+
+- **17/10/2026** — Grafo: fundo de espaço profundo (nebulosas nas cores do tema, poeira, vinheta e 3 camadas de estrelas em paralaxe com a câmera), nós como esferas com halo, ligações curvas com brilho e pulsos de luz nas ligações do destaque. Conexões indiretas (`indirectLinks` em `lib/related.ts`). Folha do `[[`: rolava só pelo arraste do framer (que trava o toque) e mostrava no máximo 8 notas; agora arrasta pela alça, lista todas, busca sem acento e sobe com o teclado do iPhone. Links da web (`lib/links.ts`, `LinkInsertSheet`). Tarefas fantasmas no card: o regex de `extractTasks` usava `\s`, que atravessa a quebra de linha, e um `- [ ]` vazio puxava a linha de baixo como tarefa; agora é linha a linha e as tarefas são refeitas do texto na leitura (curando notas já gravadas). Motivos das conexões sugeridas com a palavra escrita, não o radical.
 
 - **14/10/2026** — Nota nova troca a URL para `?id=` assim que nasce (recarregar, a atualização automática ou o Android restaurar o app abriam uma nota em branco que virava duplicata). Editor: medir a altura do texto encolhia a página e jogava o cursor para fora da tela em notas longas. Ditado pela IA (MediaRecorder + Gemini, trechos cortados nas pausas, contexto com títulos e tags para acertar nomes). "Ouvir" (voz natural do Gemini com reserva na voz do aparelho). Ligações fora do texto (`links`), "Copiar tudo" sem links, "Apagar só o conteúdo". Grafo de conexões novo (canvas, física própria). Fundo de galáxia no PC. Nome oficial "Grafite Notas". Teste `npm run e2e:novidades`.
 - **13/10/2026** — IA: o "sobrecarregada" vinha do Flash (45–90s no plano grátis) como principal no Automático e sem tempo máximo no reserva; agora Flash-Lite em tudo, repetição de 1s no 503, 15s por tentativa e último erro visível em Ajustes. Editor: barra de atalhos acima do teclado, gatilhos `-` e `/`, "Concluir", cursor na linha tocada, textarea que cresce (o fim de notas longas sumia). Ditado na nota em barra compacta, inserido no cursor, com "Apagar o que falei" (o reset antigo deixava o texto voltar); assistente não corta mais a fala (envio automático opcional, 2,8s). Conexões e tags sugeridas por conteúdo. Assistente com `edit_note`/`delete_note`, texto completo das notas relevantes e índice de títulos. Troca de senha do app (hash scrypt no Atlas) e do Vault (recifra tudo). Backup: enviar para o Drive, lembrete e cópia diária no servidor.

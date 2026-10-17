@@ -96,6 +96,9 @@ export function relatedNotes(draft: Draft, all: Note[], opts: { limit?: number; 
   const myTags = new Set(draft.tags)
   const myVec = vectors?.get(draft.id)
   const myLinks = new Set(all.find((n) => n.id === draft.id)?.linkedNoteIds ?? [])
+  // O motivo mostra a palavra como foi escrita ("chocolate"), não o radical ("chocolat")
+  const spelled = new Map<string, string>()
+  for (const t of surfaceTerms(noteText(draft))) if (!spelled.has(t.term)) spelled.set(t.term, t.surface)
 
   return pool
     .map((n) => {
@@ -107,21 +110,21 @@ export function relatedNotes(draft: Draft, all: Note[], opts: { limit?: number; 
       const sem = myVec && other ? Math.max(0, dot(myVec, other) - 0.7) * 2.5 : 0
       const score = text + shared.length * 0.18 + sem
       const linked = myLinks.has(n.id) || (n.linkedNoteIds ?? []).includes(draft.id)
-      return { note: n, score, reason: reasonFor(me, v, shared, sem > 0.1), linked }
+      return { note: n, score, reason: reasonFor(me, v, shared, sem > 0.1, spelled), linked }
     })
     .filter((r) => r.score >= 0.12 || r.linked)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
 }
 
-function reasonFor(me: Vec, other: Vec, shared: string[], semantic: boolean): string {
+function reasonFor(me: Vec, other: Vec, shared: string[], semantic: boolean, spelled: Map<string, string>): string {
   if (shared.length) return `${shared.slice(0, 2).map((t) => `#${t}`).join(' ')} em comum`
   const words = [...me]
     .filter(([w]) => other.has(w))
     .map(([w, x]) => [w, x * other.get(w)!] as const)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
-    .map(([w]) => w)
+    .map(([w]) => spelled.get(w) ?? w)
   if (words.length) return `fala de ${words.join(', ')}`
   return semantic ? 'assunto parecido' : 'conteúdo parecido'
 }
@@ -247,4 +250,158 @@ export function getLinksInText(): boolean {
 
 export function setLinksInText(on: boolean) {
   try { localStorage.setItem(LINKS_IN_TEXT_KEY, on ? '1' : '0') } catch { /* modo privado */ }
+}
+
+// ── Conexões indiretas (grafo) ───────────────────────────────────────────
+
+export type IndirectLink = {
+  a: string
+  b: string
+  /** 0..1, força da semelhança (espessura e brilho da linha) */
+  score: number
+  /** "fala de orçamento, praia", "#viagem em comum", "cita “Mercado”" */
+  reason: string
+}
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** Palavras com a grafia original (com acento) ao lado do radical, e quais parecem nomes próprios */
+function surfaceTerms(text: string) {
+  const out: { term: string; surface: string; name: boolean }[] = []
+  for (const m of text.matchAll(/[\p{L}\p{N}]+/gu)) {
+    const raw = m[0]
+    const w = fold(raw)
+    if (w.length < 3 || STOP.has(w) || /^\d+$/.test(w)) continue
+    // Nome: maiúscula no meio da frase ("falei com a Ana", "conta no Nubank") ou sigla ("PIX", "ONU")
+    const prev = text.slice(Math.max(0, (m.index ?? 0) - 3), m.index).trimEnd()
+    const midSentence = prev !== '' && !/[.!?:\n#>*\-]$/.test(prev)
+    const name = (/^\p{Lu}\p{Ll}/u.test(raw) && midSentence) || (/^\p{Lu}{2,}$/u.test(raw) && raw.length <= 6)
+    out.push({ term: stem(w), surface: raw.toLowerCase(), name })
+  }
+  return out
+}
+
+/**
+ * Pares de notas que falam da mesma coisa sem estarem ligadas: mesmas palavras raras, mesmos
+ * nomes, tags em comum ou uma citando o título da outra. Tudo no aparelho, sem IA.
+ * Usa um índice invertido (só compara notas que dividem alguma palavra) e guarda no máximo
+ * `perNote` conexões por nota — senão o grafo vira um novelo.
+ */
+export function indirectLinks(all: Note[], opts: { perNote?: number; min?: number } = {}): IndirectLink[] {
+  const { perNote = 3, min = 0.12 } = opts
+  const pool = all.filter((n) => !n.inVault && !n.cipher && (n.title || n.content.trim()))
+  const N = pool.length
+  if (N < 2) return []
+
+  // Vetores TF-IDF; nomes próprios pesam mais
+  const surface = new Map<string, Map<string, number>>()
+  const docs = pool.map((n) => {
+    const tf = new Map<string, number>()
+    const names = new Set<string>()
+    for (const t of surfaceTerms(noteText(n))) {
+      tf.set(t.term, (tf.get(t.term) ?? 0) + 1)
+      if (t.name) names.add(t.term)
+      const s = surface.get(t.term) ?? new Map<string, number>()
+      s.set(t.surface, (s.get(t.surface) ?? 0) + 1)
+      surface.set(t.term, s)
+    }
+    return { tf, names }
+  })
+  const df = new Map<string, number>()
+  for (const d of docs) for (const w of d.tf.keys()) df.set(w, (df.get(w) ?? 0) + 1)
+  // Palavra em quase todas as notas não diz nada sobre o assunto
+  const maxDf = Math.max(3, Math.ceil(N * 0.3))
+  const index = new Map<string, { i: number; x: number; name: boolean }[]>()
+  docs.forEach((d, i) => {
+    let norm = 0
+    const v: [string, number][] = []
+    for (const [w, c] of d.tf) {
+      const x = (1 + Math.log(c)) * Math.log(1 + N / (df.get(w) ?? 1)) * (d.names.has(w) ? 1.6 : 1)
+      v.push([w, x])
+      norm += x * x
+    }
+    norm = Math.sqrt(norm) || 1
+    for (const [w, x] of v) {
+      const f = df.get(w) ?? 0
+      if (f < 2 || f > maxDf) continue
+      const list = index.get(w) ?? []
+      list.push({ i, x: x / norm, name: d.names.has(w) })
+      index.set(w, list)
+    }
+  })
+
+  type Pair = { s: number; words: [string, number][]; tags: string[]; cites?: string; name?: boolean }
+  const pairs = new Map<number, Pair>()
+  const pair = (i: number, j: number) => {
+    const key = i < j ? i * N + j : j * N + i
+    let p = pairs.get(key)
+    if (!p) { p = { s: 0, words: [], tags: [] }; pairs.set(key, p) }
+    return p
+  }
+  for (const [w, list] of index) {
+    for (let x = 0; x < list.length; x++) {
+      for (let y = x + 1; y < list.length; y++) {
+        const prod = list[x].x * list[y].x
+        const p = pair(list[x].i, list[y].i)
+        p.s += prod
+        p.words.push([w, prod])
+        if (list[x].name && list[y].name) p.name = true
+      }
+    }
+  }
+  // Tags em comum
+  const byTag = new Map<string, number[]>()
+  pool.forEach((n, i) => { for (const t of n.tags) byTag.set(t, [...(byTag.get(t) ?? []), i]) })
+  for (const [t, list] of byTag) {
+    if (list.length > maxDf) continue
+    for (let x = 0; x < list.length; x++) for (let y = x + 1; y < list.length; y++) {
+      const p = pair(list[x], list[y])
+      p.s += 0.18
+      p.tags.push(t)
+    }
+  }
+  // Uma nota cita o título da outra (sem [[ ]])
+  const texts = pool.map((n) => fold(n.content))
+  pool.forEach((n, j) => {
+    const t = fold(n.title?.trim() ?? '')
+    if (t.length < 4 || STOP.has(t)) return
+    const re = new RegExp('(^|[^a-z0-9])' + escapeRegExp(t) + '($|[^a-z0-9])')
+    texts.forEach((txt, i) => {
+      if (i === j || !re.test(txt)) return
+      const p = pair(i, j)
+      p.s += 0.35
+      p.cites ??= n.title!.trim()
+    })
+  })
+
+  const nice = (term: string) => {
+    const s = surface.get(term)
+    return s ? [...s].sort((a, b) => b[1] - a[1])[0][0] : term
+  }
+  const cand: { i: number; j: number; score: number; reason: string }[] = []
+  for (const [key, p] of pairs) {
+    // Uma palavra só em comum é coincidência; um nome, uma tag ou uma citação já contam
+    if (p.s < min || (p.words.length < 2 && !p.name && !p.tags.length && !p.cites)) continue
+    const i = Math.floor(key / N)
+    const j = key % N
+    const reason = p.cites
+      ? `cita “${p.cites.length > 28 ? `${p.cites.slice(0, 27)}…` : p.cites}”`
+      : p.tags.length && p.words.length < 2
+        ? `${p.tags.slice(0, 2).map((t) => `#${t}`).join(' ')} em comum`
+        : `fala de ${p.words.sort((a, b) => b[1] - a[1]).slice(0, 3).map(([w]) => nice(w)).join(', ')}`
+    // Os escores reais ficam entre ~0,12 e 0,5: estica para 0..1 (brilho e força da mola)
+    cand.push({ i, j, score: Math.min(1, p.s * 2), reason })
+  }
+  cand.sort((a, b) => b.score - a.score)
+
+  // As mais fortes de cada nota (vale se estiver entre as melhores de qualquer uma das duas)
+  const taken = new Array<number>(N).fill(0)
+  const out: IndirectLink[] = []
+  for (const c of cand) {
+    if (taken[c.i] >= perNote && taken[c.j] >= perNote) continue
+    taken[c.i]++
+    taken[c.j]++
+    out.push({ a: pool[c.i].id, b: pool[c.j].id, score: c.score, reason: c.reason })
+  }
+  return out
 }

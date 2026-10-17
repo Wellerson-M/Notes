@@ -1,8 +1,10 @@
 import type { Note } from './types'
+import type { IndirectLink } from './related'
 
 /**
  * Grafo das notas (o "graph view" do Obsidian): nós = notas, arestas = ligações em qualquer
- * direção ([[ ]] no texto ou ligações de fora do texto). O Vault nunca entra.
+ * direção ([[ ]] no texto ou ligações de fora do texto) e, opcionalmente, as indiretas
+ * (notas que falam da mesma coisa, ver `indirectLinks`). O Vault nunca entra.
  * A física é uma versão enxuta do d3-force: repulsão entre todos, molas nas arestas,
  * colisão e uma gravidade leve para o centro. `alpha` esfria a cada passo — quando chega
  * perto de zero a simulação para e não gasta mais nada.
@@ -11,7 +13,10 @@ import type { Note } from './types'
 export type GNode = {
   id: string
   label: string
+  /** Ligações diretas (dão o tamanho do nó) */
   deg: number
+  /** Diretas + indiretas (afrouxam as molas de nós muito ligados) */
+  wdeg: number
   pinned: boolean
   x: number
   y: number
@@ -22,7 +27,15 @@ export type GNode = {
   fy: number | null
   r: number
 }
-export type GLink = { a: number; b: number }
+export type GLink = {
+  a: number
+  b: number
+  kind: 'direct' | 'indirect'
+  /** 0..1: força da semelhança (indiretas) */
+  w: number
+  /** Por que estão ligadas (indiretas) */
+  reason?: string
+}
 export type Graph = { nodes: GNode[]; links: GLink[]; index: Map<string, number>; neighbors: Set<number>[] }
 
 const label = (n: Note) => n.title?.trim() || n.content.trim().split('\n')[0].replace(/^[#>\-*\s[\]x]+/i, '').slice(0, 40) || 'sem título'
@@ -31,7 +44,7 @@ const label = (n: Note) => n.title?.trim() || n.content.trim().split('\n')[0].re
  * Monta o grafo. Com `focusId`, só a vizinhança até `depth` passos; sem ele, todas as notas
  * (`orphans` = incluir as que não têm nenhuma ligação).
  */
-export function buildGraph(all: Note[], opts: { focusId?: string; depth?: number; orphans?: boolean } = {}): Graph {
+export function buildGraph(all: Note[], opts: { focusId?: string; depth?: number; orphans?: boolean; indirect?: IndirectLink[] } = {}): Graph {
   const notes = all.filter((n) => !n.inVault && !n.cipher)
   const byId = new Map(notes.map((n) => [n.id, n]))
   const adj = new Map<string, Set<string>>()
@@ -43,6 +56,16 @@ export function buildGraph(all: Note[], opts: { focusId?: string; depth?: number
     adj.get(b)!.add(a)
   }
   for (const n of notes) for (const id of n.linkedNoteIds ?? []) link(n.id, id)
+  // Indiretas: só entre notas que ainda não têm ligação direta
+  const soft = new Map<string, Map<string, IndirectLink>>()
+  for (const l of opts.indirect ?? []) {
+    if (l.a === l.b || !byId.has(l.a) || !byId.has(l.b) || adj.get(l.a)?.has(l.b)) continue
+    if (!soft.has(l.a)) soft.set(l.a, new Map())
+    if (!soft.has(l.b)) soft.set(l.b, new Map())
+    soft.get(l.a)!.set(l.b, l)
+    soft.get(l.b)!.set(l.a, l)
+  }
+  const around = (id: string) => [...(adj.get(id) ?? []), ...(soft.get(id)?.keys() ?? [])]
 
   let keep: string[]
   if (opts.focusId && byId.has(opts.focusId)) {
@@ -51,22 +74,23 @@ export function buildGraph(all: Note[], opts: { focusId?: string; depth?: number
     let frontier = [opts.focusId]
     for (let d = 0; d < depth; d++) {
       const next: string[] = []
-      for (const id of frontier) for (const nb of adj.get(id) ?? []) if (!seen.has(nb)) { seen.add(nb); next.push(nb) }
+      for (const id of frontier) for (const nb of around(id)) if (!seen.has(nb)) { seen.add(nb); next.push(nb) }
       frontier = next
     }
     keep = [...seen]
   } else {
-    keep = notes.filter((n) => opts.orphans !== false || adj.has(n.id)).map((n) => n.id)
+    keep = notes.filter((n) => opts.orphans !== false || adj.has(n.id) || soft.has(n.id)).map((n) => n.id)
   }
 
   const index = new Map(keep.map((id, i) => [id, i]))
   const nodes: GNode[] = keep.map((id, i) => {
     const n = byId.get(id)!
     const deg = adj.get(id)?.size ?? 0
+    const wdeg = deg + (soft.get(id)?.size ?? 0)
     // Começa numa espiral (filotaxia, como o d3): a física "abre" o grafo a partir do centro
     const radius = 10 * Math.sqrt(0.5 + i)
     const angle = i * Math.PI * (3 - Math.sqrt(5))
-    return { id, label: label(n), deg, pinned: n.pinned, x: radius * Math.cos(angle), y: radius * Math.sin(angle), vx: 0, vy: 0, fx: null, fy: null, r: 4 + Math.sqrt(deg) * 2.4 }
+    return { id, label: label(n), deg, wdeg, pinned: n.pinned, x: radius * Math.cos(angle), y: radius * Math.sin(angle), vx: 0, vy: 0, fx: null, fy: null, r: 4 + Math.sqrt(deg) * 2.4 }
   })
   const links: GLink[] = []
   const neighbors = nodes.map(() => new Set<number>())
@@ -76,7 +100,18 @@ export function buildGraph(all: Note[], opts: { focusId?: string; depth?: number
     for (const b of set) {
       const ib = index.get(b)
       if (ib === undefined || ib <= ia) continue
-      links.push({ a: ia, b: ib })
+      links.push({ a: ia, b: ib, kind: 'direct', w: 1 })
+      neighbors[ia].add(ib)
+      neighbors[ib].add(ia)
+    }
+  }
+  for (const [a, map] of soft) {
+    const ia = index.get(a)
+    if (ia === undefined) continue
+    for (const [b, l] of map) {
+      const ib = index.get(b)
+      if (ib === undefined || ib <= ia) continue
+      links.push({ a: ia, b: ib, kind: 'indirect', w: l.score, reason: l.reason })
       neighbors[ia].add(ib)
       neighbors[ib].add(ia)
     }
@@ -90,6 +125,9 @@ const ALPHA_MIN = 0.002
 const ALPHA_DECAY = 1 - Math.pow(ALPHA_MIN, 1 / 300)
 const VELOCITY_KEEP = 0.6
 const LINK_DISTANCE = 46
+/** Indiretas: mais longas e frouxas — aproximam o assunto sem colar as notas */
+const SOFT_DISTANCE = 88
+const SOFT_STRENGTH = 0.3
 const CHARGE = -220
 const CHARGE_MAX_D2 = 600 * 600
 const GRAVITY = 0.045
@@ -111,11 +149,12 @@ export function tick(g: Graph, s: Sim): boolean {
     let dx = q.x + q.vx - p.x - p.vx
     let dy = q.y + q.vy - p.y - p.vy
     const d = Math.hypot(dx, dy) || 1e-6
-    const strength = 1 / Math.min(p.deg || 1, q.deg || 1)
-    const k = ((d - LINK_DISTANCE) / d) * a * strength
+    const soft = l.kind === 'indirect'
+    const strength = (soft ? SOFT_STRENGTH * (0.5 + l.w) : 1) / Math.min(p.wdeg || 1, q.wdeg || 1)
+    const k = ((d - (soft ? SOFT_DISTANCE : LINK_DISTANCE)) / d) * a * strength
     dx *= k
     dy *= k
-    const bias = (p.deg || 1) / ((p.deg || 1) + (q.deg || 1))
+    const bias = (p.wdeg || 1) / ((p.wdeg || 1) + (q.wdeg || 1))
     q.vx -= dx * bias
     q.vy -= dy * bias
     p.vx += dx * (1 - bias)

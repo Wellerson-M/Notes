@@ -100,6 +100,7 @@ export default function NoteCard({ note, showInkWave = false, revealed = false }
     .replace(/\*\*/g, '')
     .replace(/\*/g, '')
     .replace(/\[\[([^\]]+)\]\]/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)\s]+\)/g, '$1')
     .replace(/^[-*]\s+\[.\]\s+/gm, '')
     .replace(/^[-*]\s+/gm, '')
     .replace(/^>\s+/gm, '')
