@@ -16,8 +16,12 @@ function newId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
 }
 
+/**
+ * Sem o controle de sync. As tarefas são refeitas do texto: as gravadas por versões antigas
+ * (ou vindas de outro aparelho) podiam ter tarefas fantasmas que não estão na nota.
+ */
 function strip({ dirty: _dirty, ...note }: LocalNote): Note {
-  return note
+  return note.cipher ? note : { ...note, tasks: extractTasks(note.content) }
 }
 
 /** Nota do Vault aberta para leitura. Com o Vault trancado, volta como está (com `cipher`). */

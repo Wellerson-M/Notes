@@ -5,7 +5,9 @@ import FloatingToolbar from './FloatingToolbar'
 import WikilinkAutocomplete from './WikilinkAutocomplete'
 import WikiLink from './WikiLink'
 import EditorAccessory from './EditorAccessory'
+import LinkInsertSheet from './LinkInsertSheet'
 import { parseTaskLine } from '@/lib/notes'
+import { BARE_URL, safeHref, shortUrl } from '@/lib/links'
 
 /** Controle do editor por fora (ditado, templates): insere no ponto onde o cursor estava */
 export type EditorHandle = {
@@ -116,18 +118,29 @@ function renderLine(line: string, i: number, onToggleTask?: (lineIndex: number) 
   )
 }
 
+/** Pedaços com marcação: [[nota]], **negrito**, _itálico_, `código`, [texto](link) e endereços soltos */
+const MD_LINK = /\[[^\]]+?\]\([^)\s]+\)/
+const INLINE = new RegExp(`(${/\[\[[^\]]+\]\]|\*\*[^*]+\*\*|_[^_]+_|`[^`]+`/.source}|${MD_LINK.source}|${BARE_URL.source})`)
+const BARE_ONLY = new RegExp(`^${BARE_URL.source}$`)
+
+const linkStyle = { color: 'var(--accent-amber)', textDecoration: 'underline', textDecorationColor: 'rgba(var(--accent-rgb), 0.4)', overflowWrap: 'anywhere' } as const
+
 function inlineMarkdown(text: string): React.ReactNode {
-  // Bold
-  const parts = text.split(/(\[\[[^\]]+\]\]|\*\*[^*]+\*\*|_[^_]+_|`[^`]+`|\[.+?\]\(.+?\))/)
+  const parts = text.split(INLINE)
   return parts.map((part, i) => {
     const wiki = part.match(/^\[\[([^\]]+)\]\]$/)
     if (wiki) return <WikiLink key={i} title={wiki[1].trim()} />
     if (part.match(/^\*\*(.+)\*\*$/)) return <strong key={i}>{part.slice(2, -2)}</strong>
     if (part.match(/^_(.+)_$/)) return <em key={i}>{part.slice(1, -1)}</em>
     if (part.match(/^`(.+)`$/)) return <code key={i} style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-elevated)', padding: '1px 5px', borderRadius: 4, fontSize: 13 }}>{part.slice(1, -1)}</code>
-    const link = part.match(/^\[(.+?)\]\((.+?)\)$/)
-    if (link) return <a key={i} href={link[2]} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: 'var(--accent-amber)', textDecoration: 'underline', textDecorationColor: 'rgba(var(--accent-rgb), 0.4)' }}>{link[1]}</a>
-    return part
+    const link = part.match(/^\[([^\]]+?)\]\(([^)\s]+)\)$/)
+    const href = link ? safeHref(link[2]) : BARE_ONLY.test(part) ? safeHref(part) : null
+    if (href) return (
+      <a key={i} href={href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={linkStyle}>
+        {link ? link[1] : shortUrl(part)}
+      </a>
+    )
+    return link ? link[1] : part
   })
 }
 
@@ -155,6 +168,8 @@ export default function MarkdownEditor({ value, onChange, placeholder = 'Escreva
   const [wikilinkOpen, setWikilinkOpen] = useState(false)
   const [wikilinkQuery, setWikilinkQuery] = useState('')
   const [wikilinkCursorPos, setWikilinkCursorPos] = useState(0)
+  /** Folha "Inserir link": o trecho onde o link entra fica guardado enquanto ela tem o foco */
+  const [linkSheet, setLinkSheet] = useState<{ sel: Sel; text: string } | null>(null)
   /** "-" ou "/" digitado sozinho no começo da linha: a barra mostra as opções dele */
   const [trigger, setTrigger] = useState<'-' | '/' | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -296,7 +311,27 @@ export default function MarkdownEditor({ value, onChange, placeholder = 'Escreva
         setWikilinkOpen(true)
         return
       }
+      case 'url': {
+        const sel = currentSel()
+        selOverride.current = null
+        setLinkSheet({ sel, text: valueRef.current.slice(sel.start, sel.end) })
+        return
+      }
     }
+  }
+
+  const handleLinkInsert = (url: string, text: string) => {
+    if (!linkSheet) return
+    const v = valueRef.current
+    const { start, end } = linkSheet.sel
+    const before = v.slice(0, start)
+    const after = v.slice(end)
+    let piece = text ? `[${text.replace(/[[\]]/g, '')}](${url})` : url
+    if (before && !/\s$/.test(before)) piece = ' ' + piece
+    if (after && !/^\s/.test(after)) piece = piece + ' '
+    setLinkSheet(null)
+    setIsEditing(true)
+    commit(before + piece + after, before.length + piece.length)
   }
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -379,6 +414,16 @@ export default function MarkdownEditor({ value, onChange, placeholder = 'Escreva
         onSelect={handleWikilinkSelect}
         onClose={() => { setWikilinkOpen(false); setWikilinkQuery('') }}
       />
+      <LinkInsertSheet
+        open={!!linkSheet}
+        initial={linkSheet?.text ?? ''}
+        onInsert={handleLinkInsert}
+        onClose={() => {
+          // Volta ao texto, com o cursor onde estava (e sem o "/" do gatilho, se veio dele)
+          if (linkSheet) { setIsEditing(true); commit(valueRef.current, linkSheet.sel.end) }
+          setLinkSheet(null)
+        }}
+      />
       {isEditing ? (
         <AmberCaret>
           <div style={{ position: 'relative' }}>
@@ -395,8 +440,8 @@ export default function MarkdownEditor({ value, onChange, placeholder = 'Escreva
               onKeyDown={handleKeyDown}
               onSelect={handleSelect}
               onBlur={() => {
-                // A lista de notas do [[ ]] abre por cima: escolher uma nota não encerra a edição
-                if (wikilinkOpen || pendingSel.current !== null) return
+                // A lista de notas do [[ ]] e a folha de link abrem por cima: usá-las não encerra a edição
+                if (wikilinkOpen || linkSheet || pendingSel.current !== null) return
                 setIsEditing(false)
                 setToolbarVisible(false)
                 setTrigger(null)

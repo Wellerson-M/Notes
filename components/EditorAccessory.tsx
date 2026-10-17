@@ -1,6 +1,6 @@
 'use client'
 import { motion } from 'framer-motion'
-import { Check, CheckSquare, List, Heading, Bold, Link2, Quote, Minus, CalendarDays, Mic, ListOrdered, Clock } from 'lucide-react'
+import { Check, CheckSquare, List, Heading, Bold, Link2, Quote, Minus, CalendarDays, Mic, ListOrdered, Clock, Globe } from 'lucide-react'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 
 /** Um atalho da barra: insere no cursor (ou abre algo), sem tirar o foco do texto */
@@ -14,6 +14,7 @@ export const QUICK_ITEMS: QuickItem[] = [
   { id: 'heading', label: 'título', Icon: Heading },
   { id: 'bold', label: 'negrito', Icon: Bold },
   { id: 'link', label: 'ligar nota', Icon: Link2 },
+  { id: 'url', label: 'link', Icon: Globe },
   { id: 'quote', label: 'citação', Icon: Quote },
   { id: 'divider', label: 'divisória', Icon: Minus },
   { id: 'today', label: 'hoje', Icon: CalendarDays },
@@ -36,6 +37,7 @@ export const TRIGGER_ITEMS: Record<'-' | '/', QuickItem[]> = {
     { id: 'quote', label: 'citação', Icon: Quote },
     { id: 'divider', label: 'divisória', Icon: Minus },
     { id: 'link', label: 'ligar nota', Icon: Link2 },
+    { id: 'url', label: 'link da web', Icon: Globe },
     { id: 'today', label: 'data de hoje', Icon: CalendarDays },
     { id: 'now', label: 'hora', Icon: Clock },
   ],

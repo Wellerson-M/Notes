@@ -49,6 +49,7 @@ export function getPreview(content: string, max = 120): string {
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/\*\*/g, '')
     .replace(/\[\[([^\]]+)\]\]/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)\s]+\)/g, '$1')
     .replace(/^[-*]\s+(\[[ x]\]\s+)?/gm, '')
     .split('\n')
     .filter((l) => l.trim())
@@ -57,12 +58,18 @@ export function getPreview(content: string, max = 120): string {
     .slice(0, max)
 }
 
+/**
+ * Linha de tarefa com texto. Linha a linha e sem `\s` depois do marcador: o `\s` atravessa a
+ * quebra de linha, e um `- [ ]` vazio "puxava" a linha de baixo como tarefa fantasma no card.
+ */
+const TASK_LINE = /^([ \t]*[-*][ \t]+\[)([ xX])(\][ \t]+\S.*)$/
+
 /** Extrai `- [ ] tarefa` / `- [x] tarefa` do markdown */
 export function extractTasks(content: string): Note['tasks'] {
-  const tasks = [...content.matchAll(/^\s*[-*]\s+\[([ xX])\]\s+(.+)$/gm)].map((m) => ({
-    text: m[2].trim(),
-    done: m[1] !== ' ',
-  }))
+  const tasks = content.split('\n').flatMap((line) => {
+    const m = line.match(TASK_LINE)
+    return m ? [{ text: m[3].slice(1).trim(), done: m[2] !== ' ' }] : []
+  })
   return tasks.length ? tasks : undefined
 }
 
@@ -75,8 +82,6 @@ export function extractLinkedIds(content: string, notes: Note[]): string[] | und
     .map((n) => n.id)
   return ids.length ? [...new Set(ids)] : undefined
 }
-
-const TASK_LINE = /^(\s*[-*]\s+\[)([ xX])(\]\s+.+)$/
 
 /** Marca/desmarca a tarefa número `index` (na ordem do texto) e devolve o conteúdo novo */
 export function toggleTaskAt(content: string, index: number): string {
