@@ -1,6 +1,7 @@
 'use client'
 import Dexie, { type EntityTable } from 'dexie'
 import type { LocalNote } from './types'
+import { isDemo } from './demo'
 
 type Meta = { key: string; value: string | number }
 
@@ -23,8 +24,9 @@ export type Embedding = { id: string; updatedAt: string; vec: number[] }
 /** Chaves do Vault (CryptoKey não extraível) liberadas pela biometria deste aparelho */
 type Secret = { key: string; value: unknown }
 
-/** Banco local (IndexedDB). É a fonte da verdade no aparelho; o Atlas é a cópia de sync. */
-export const db = new Dexie('grafite-notas') as Dexie & {
+/** Banco local (IndexedDB). É a fonte da verdade no aparelho; o Atlas é a cópia de sync.
+ *  O modo demonstração usa um banco separado (ver lib/demo.ts). */
+export const db = new Dexie(isDemo ? 'grafite-notas-demo' : 'grafite-notas') as Dexie & {
   notes: EntityTable<LocalNote, 'id'>
   meta: EntityTable<Meta, 'key'>
   history: EntityTable<NoteVersion, 'seq'>

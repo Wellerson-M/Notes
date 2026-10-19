@@ -8,6 +8,7 @@ import { startAutoLock } from '@/lib/vault'
 import { applyTheme, getTheme } from '@/lib/theme'
 import { backupReminderDue } from '@/lib/backup'
 import { useUIStore } from '@/store/ui'
+import { demoNotes, isDemo } from '@/lib/demo'
 
 const WELCOME_DATE = '2026-01-01T12:00:00.000Z'
 
@@ -36,6 +37,11 @@ export default function AppBoot() {
     // uma nota só, e qualquer edição ou exclusão sua sempre vence esta cópia no sync.
     void (async () => {
       if (await getMeta('welcomed')) return
+      if (isDemo) {
+        if ((await db.notes.count()) === 0) await db.notes.bulkPut(demoNotes())
+        await setMeta('welcomed', 1)
+        return
+      }
       await syncNow()
       if ((await db.notes.count()) === 0) {
         await db.notes.put({
@@ -58,6 +64,7 @@ export default function AppBoot() {
 
     // Lembrete de backup em arquivo (fora do Atlas), sem atrapalhar a abertura do app
     const backupTimer = setTimeout(async () => {
+      if (isDemo) return
       const days = await backupReminderDue().catch(() => null)
       if (days === null) return
       useUIStore.getState().showToast(

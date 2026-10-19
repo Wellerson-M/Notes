@@ -3,6 +3,7 @@ import { db, getMeta, setMeta } from './db'
 import type { LocalNote, Note } from './types'
 import { useUIStore } from '@/store/ui'
 import { snapshot, snapshotIfDue } from './history'
+import { isDemo } from './demo'
 
 /**
  * Sync local-first com o Atlas, regra "última escrita vence" por nota.
@@ -29,6 +30,8 @@ export function syncNow(): Promise<SyncResult> {
 
 async function doSync(): Promise<SyncResult> {
   const ui = useUIStore.getState()
+  // Demonstração: nada sai do aparelho
+  if (isDemo) { ui.setSyncStatus('ok'); return 'ok' }
   if (!navigator.onLine) { ui.setSyncStatus('offline'); return 'offline' }
 
   ui.setSyncStatus('syncing')
