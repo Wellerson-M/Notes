@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ParticleField from './ParticleField'
+import { isDemo } from '@/lib/demo'
 
 const DURATION = 1000
 /** Mostra a splash uma vez por sessão, não a cada navegação. */
@@ -11,6 +12,8 @@ export default function Splash() {
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
+    // Na demonstração (embutida no portfólio) a abertura só atrasaria o app
+    if (isDemo) return
     let seen = false
     try {
       seen = sessionStorage.getItem(SEEN_KEY) === '1'
