@@ -8,7 +8,7 @@ import { startAutoLock } from '@/lib/vault'
 import { applyTheme, getTheme } from '@/lib/theme'
 import { backupReminderDue } from '@/lib/backup'
 import { useUIStore } from '@/store/ui'
-import { demoNotes, isDemo } from '@/lib/demo'
+import { demoFresh, demoNotes, isDemo } from '@/lib/demo'
 
 const WELCOME_DATE = '2026-01-01T12:00:00.000Z'
 
@@ -36,12 +36,17 @@ export default function AppBoot() {
     // Nota de boas-vindas num aparelho vazio. Id fixo + data antiga: entre aparelhos ela vira
     // uma nota só, e qualquer edição ou exclusão sua sempre vence esta cópia no sync.
     void (async () => {
-      if (await getMeta('welcomed')) return
       if (isDemo) {
-        if ((await db.notes.count()) === 0) await db.notes.bulkPut(demoNotes())
-        await setMeta('welcomed', 1)
+        // Recomeça a cada abertura pelo link e também quando quem testou apagou tudo
+        // (a exclusão só marca a nota, então contar o banco não basta).
+        const visible = await db.notes.filter((n) => !n.deleted).count()
+        if (demoFresh || visible === 0) {
+          await db.notes.clear()
+          await db.notes.bulkPut(demoNotes())
+        }
         return
       }
+      if (await getMeta('welcomed')) return
       await syncNow()
       if ((await db.notes.count()) === 0) {
         await db.notes.put({

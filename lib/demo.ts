@@ -17,6 +17,12 @@ export const isDemo: boolean = (() => {
   }
 })()
 
+/** Aberto agora pelo link com `?demo`: a demonstração recomeça do zero. */
+export const demoFresh: boolean = (() => {
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).has('demo')
+})()
+
 const day = 24 * 60 * 60 * 1000
 
 /** Data `daysAgo` dias atrás, num horário fixo para a ordem ficar estável */
